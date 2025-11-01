@@ -20,16 +20,16 @@ class MdPlaybackParam:
     misMatchMode: MisMatchMode = MisMatchMode.NoFix
 
     # 音符名称到键盘按键的映射表
-    noteToKey: dict = {}
+    note_to_key_path: str
 
-    midi : MidiFile
+    midi_path : MidiFile
 
-    def __init__(self, midi: MidiFile,
+    def __init__(self, midiPath: str,
                  misMatchMode: MisMatchMode = MisMatchMode.NoFix,
-                 noteToKey: dict = {}):
-        self.midi = midi
+                 noteToKeyPath: str = ''):
+        self.midi_path = midiPath
         self.misMatchMode = misMatchMode
-        self.noteToKey = noteToKey
+        self.note_to_key_path = noteToKeyPath
 
 class MidiNoteBiMap:
     def __init__(self):

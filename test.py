@@ -1,12 +1,14 @@
 import sys
 from PyQt6.QtWidgets import QWidget, QPushButton, QApplication
 from PyQt6.QtGui import QCloseEvent
-import mido
-import json
 import os
 
-from core.md_player import MIDIPlayer
-from core.type import MdPlaybackParam
+from core.player.md_player import QMidiPlayer
+from core.player.type import MdPlaybackParam
+from core.component.music_player_bar import MusicPlayerBar
+from qfluentwidgets import (setTheme, Theme)
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel as QtLabel)
+from PyQt6.QtCore import Qt
 
 class Example(QWidget):
 
@@ -67,7 +69,7 @@ class Example(QWidget):
         self.setWindowTitle('Quit button')
         self.show()
 
-        self.player = MIDIPlayer()
+        self.player = QMidiPlayer()
         self.player.start_player()
         self.midi_parent_path = "./res/midi/"
         self.midi_current_idx = 0
@@ -78,12 +80,7 @@ class Example(QWidget):
         event.accept()
 
     def _testLoad(self, midi_file_path):
-        # 1. 加载 MIDI 文件
-        mid = mido.MidiFile(midi_file_path)
-        print(f"--- 成功加载 MIDI 文件: {midi_file_path} ---")
-        noteToKeyConfig = loadJsonConfig('res/md_cfg/md-test-play.json')
-        self.player.prepare(md_playback_param=MdPlaybackParam(midi=mid, noteToKey=noteToKeyConfig))
-
+        self.player.prepare(md_playback_param=MdPlaybackParam(midiPath=midi_file_path, noteToKeyPath='res/md_cfg/md-test-play.json'))
         self.testPlay()
 
     def testPre(self):
@@ -128,21 +125,6 @@ class Example(QWidget):
         QApplication.instance().quit()
     
 
-def loadJsonConfig(path: str) -> dict:
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        return config
-    except FileNotFoundError:
-        print("错误：文件不存在")
-        raise
-    except json.JSONDecodeError:
-        print("错误：JSON 格式无效")
-        raise
-    except Exception as e:
-        print(f"发生错误：{e}")
-        raise
-
 def main():
 
     app = QApplication(sys.argv)
@@ -150,5 +132,34 @@ def main():
     sys.exit(app.exec())
 
 
+# --- 运行主程序 (与之前相同) ---
+def testBar():
+    app = QApplication(sys.argv)
+    
+    # 设置 Fluent UI 的亮色主题
+    setTheme(Theme.LIGHT)
+
+    main_window = QWidget()
+    main_window.setWindowTitle("Fluent 音乐播放器 (Qt 6 手动列表)")
+    main_window.resize(900, 150)
+    
+    window_layout = QVBoxLayout(main_window)
+    info_label = QtLabel(
+        "这是一个使用 PyQt-Fluent-Widgets 制作的音乐播放Bar。\n"
+        "已使用 Qt 6 的手动列表管理方案替代 QMediaPlaylist。"
+    )
+    info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    info_label.setStyleSheet("color: #606060; margin: 10px;")
+    
+    player_bar = MusicPlayerBar()
+    
+    window_layout.addWidget(info_label)
+    window_layout.addWidget(player_bar)
+    window_layout.addStretch(1)
+
+    main_window.show()
+    
+    sys.exit(app.exec())
+
 if __name__ == '__main__':
-    main()
+    testBar()

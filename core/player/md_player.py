@@ -4,31 +4,49 @@ import time
 from typing import List, Set  # 用于类型提示
 from pynput.keyboard import Controller  
 
-from core.type import MdPlaybackParam,MIDI_NOTE_MAP,KEY_MAP
+from ..player.type import MdPlaybackParam,MIDI_NOTE_MAP,KEY_MAP
+from PyQt6 import QtCore
+from enum import Enum
+import json
+import mido
 
-class MIDIPlayer:
+class QMidiPlayer(QtCore.QObject):
+    class PlayState(Enum):
+        IDLE    = 1
+        PLAYING = 2
+        PAUSED  = 3
+
+    signal_state = QtCore.pyqtSignal(PlayState)
+    signal_play_position = QtCore.pyqtSignal(int)
+    signal_play_duration = QtCore.pyqtSignal(int)
+    signal_media_done = QtCore.pyqtSignal(bool)
+
     def __init__(self):
+        super().__init__()
+
+        # config
+        self.midi = None
+        self.note_to_key = {}
+
         self.keyboard = Controller()
         self.task_queue = queue.Queue()
         self.events = []  # (绝对微秒, 事件类型, 音符)
         
         self.ticks_per_beat = None
-        self.playback_param = None
         self.total_duration_us = 0
         self.total_events = 0
 
-        # 是否已加载midi
-        self.prepare_state = False
-
         # 播放状态
-        self.state = 'idle'  # 'idle', 'playing', 'paused'
+        self.state = QMidiPlayer.PlayState.IDLE  # 'idle', 'playing', 'paused'
         
         # 线程控制
         self.running = True
         self.lock = threading.Lock() 
         self.wake_up_event = threading.Event()
+        self.position_update_event = threading.Event()
         self.scheduler_thread = None
         self.executor_thread = None
+        self.position_update_thread = None
 
         # 播放时钟（虚拟时钟）
         self.current_playback_time_us = 0 
@@ -48,15 +66,20 @@ class MIDIPlayer:
         # 5ms
         self.RESPONSIVE_LOOP_TIME_MS = 5
 
-
     def prepare(self, md_playback_param: MdPlaybackParam):
         self.stop()
         
         with self.lock:
             print("开始预处理MIDI...")
-            mid = md_playback_param.midi
-            self.playback_param = md_playback_param
-            self.ticks_per_beat = mid.ticks_per_beat
+            try:
+                with open(md_playback_param.note_to_key_path, 'r', encoding='utf-8') as f:
+                    self.note_to_key = json.load(f)
+            except Exception as e:
+                print(f"解析音符转键盘配置发生错误：{e}")
+                raise
+
+            self.midi = mido.MidiFile(md_playback_param.midi_path)
+            self.ticks_per_beat = self.midi.ticks_per_beat
             
             raw_events = [] # (tick, type, note)
             tempo_events = [] # (tick, tempo)
@@ -64,7 +87,7 @@ class MIDIPlayer:
             # 初始 tempo
             initial_tempo = 500000
 
-            for track in mid.tracks:
+            for track in self.midi.tracks:
                 current_tick = 0
                 for msg in track:
                     current_tick += msg.time
@@ -113,20 +136,32 @@ class MIDIPlayer:
                 self.total_duration_us = self.events[-1][0] # 最后一个事件的时间戳
 
             print(f"预处理完毕，总事件数: {self.total_events}，总时长: {self.total_duration_us / 1000:.2f} ms")
-            self.prepare_state = True
+            self.signal_play_duration.emit(self.total_duration_us // 1000)
 
 
     def _get_keys(self, note: int) -> List[str]:
         # (与上一版相同)
-        if not self.playback_param: return []
+        if not self.note_to_key: return []
         notestr = MIDI_NOTE_MAP.get_note_by_midi(note)
         if notestr is None: return []
-        if notestr not in self.playback_param.noteToKey: return []
-        value = self.playback_param.noteToKey[notestr]
+        if notestr not in self.note_to_key: return []
+        value = self.note_to_key[notestr]
         if isinstance(value, str): return [value]
         elif isinstance(value, list): return [k for k in value if isinstance(k, str)]
         else: return []
 
+    def _position_update_thread(self):
+        while self.running:
+            self.position_update_event.clear()
+            with self.lock:
+                tmp_state = self.state
+            if tmp_state == QMidiPlayer.PlayState.PLAYING:
+                # 1s回告一次
+                time.sleep(1)
+                self.signal_play_position.emit(int(self.current_playback_time_us // 1000))
+            else:
+                self.position_update_event.wait(None)
+        print("position_update 线程退出")
     
     #执行线程增加按键状态跟踪
     def _executor_thread(self):
@@ -178,7 +213,7 @@ class MIDIPlayer:
 
             with self.lock:
                 # --- 状态检查与时钟推进 ---
-                if self.state == 'playing':
+                if self.state == QMidiPlayer.PlayState.PLAYING:
                     current_real_time_ns = time.time_ns()
                     
                     # 仅当 last_real_time_ns > 0 (非暂停后刚恢复) 才推进时钟
@@ -209,7 +244,9 @@ class MIDIPlayer:
                     if self.event_index >= self.total_events:
                         # 播放完毕
                         print("播放完毕。")
-                        self.state = 'idle'
+                        self.state = QMidiPlayer.PlayState.IDLE
+                        self.signal_state.emit(self.state)
+                        self.signal_media_done.emit(True)
                         self.current_playback_time_us = 0
                         self.event_index = 0
                         self.last_real_time_ns = 0 # 重置时钟锚
@@ -239,7 +276,7 @@ class MIDIPlayer:
                             sleep_micros = min(wait_micros, responsive_wait_us)
                             wait_timeout_sec = sleep_micros / 1_000_000
 
-                elif self.state == 'paused' or self.state == 'idle':
+                elif self.state == QMidiPlayer.PlayState.PAUSED or self.state == QMidiPlayer.PlayState.IDLE:
                     # 暂停或空闲时，重置时钟锚，无限期等待
                     self.last_real_time_ns = 0 
                     wait_timeout_sec = None
@@ -282,14 +319,19 @@ class MIDIPlayer:
         self.scheduler_thread = threading.Thread(target=self._scheduler_thread)
         self.scheduler_thread.start()
 
+        # 启动播放位置上报线程
+        self.position_update_thread = threading.Thread(target=self._position_update_thread)
+        self.position_update_thread.start()
+
     def stop(self):       
         with self.lock:
-            if self.state == 'idle':
+            if self.state == QMidiPlayer.PlayState.IDLE:
                 print("已停止播放")
                 return
 
             print("正在停止播放...")
-            self.state = 'idle'
+            self.state = QMidiPlayer.PlayState.IDLE
+            self.signal_state.emit(self.state)
             #清空任务队列（防止旧的按键事件执行）
             while not self.task_queue.empty():
                 try: self.task_queue.get_nowait()
@@ -309,19 +351,22 @@ class MIDIPlayer:
     
     def stop_player(self):
         self.stop()
-        with self.lock:
-            if not self.running:
-                return
-            self.running = False
+        if not self.running:
+            return
+        self.running = False
         self.wake_up_event.set() # 唤醒调度器
+        self.position_update_event.set()
 
         if self.scheduler_thread:
             self.scheduler_thread.join()
         if self.executor_thread:
             self.executor_thread.join()
+        if self.position_update_thread:
+            self.position_update_thread.join()
             
         self.scheduler_thread = None
         self.executor_thread = None
+        self.position_update_thread = None
         print("播放器线程已停止")
 
     def play(self):
@@ -330,16 +375,17 @@ class MIDIPlayer:
             print("线程未启动，请先调用 start_player()")
             return
         
-        if not self.prepare_state:
+        if not self.midi:
             print("未加载midi，请先调用 prepare(...)")
             return
             
         with self.lock:
-            if self.state == 'playing':
+            if self.state == QMidiPlayer.PlayState.PLAYING:
                 return # 已经在播放
             
             print("开始播放...")
-            self.state = 'playing'
+            self.state = QMidiPlayer.PlayState.PLAYING
+            self.signal_state.emit(self.state)
             # 重置真实时钟，防止因暂停导致的时间跳跃
             self.last_real_time_ns = time.time_ns()
             
@@ -349,14 +395,16 @@ class MIDIPlayer:
         
         # 唤醒调度器线程
         self.wake_up_event.set()
+        self.position_update_event.set()
 
     def pause(self):
         """暂停播放。"""
         with self.lock:
-            if self.state != 'playing':
+            if self.state != QMidiPlayer.PlayState.PLAYING:
                 return
             print("暂停播放。")
-            self.state = 'paused'
+            self.state = QMidiPlayer.PlayState.PAUSED
+            self.signal_state.emit(self.state)
         
         # 唤醒调度器，让它进入 'paused' 的等待状态
         self.wake_up_event.set()
@@ -372,8 +420,9 @@ class MIDIPlayer:
         
         with self.lock:
             # 1. 暂停调度器
-            was_playing = (self.state == 'playing')
-            self.state = 'paused'
+            was_playing = (self.state == QMidiPlayer.PlayState.PLAYING)
+            self.state = QMidiPlayer.PlayState.PAUSED
+            self.signal_state.emit(self.state)
 
             # 2. 清空任务队列（防止旧的按键事件执行）
             while not self.task_queue.empty():
@@ -398,7 +447,8 @@ class MIDIPlayer:
 
             # 6. 如果之前在播放，则恢复播放
             if was_playing:
-                self.state = 'playing'
+                self.state = QMidiPlayer.PlayState.PLAYING
+                self.signal_state.emit(self.state)
                 self.last_real_time_ns = time.time_ns()
         
         # 唤醒调度器
@@ -437,3 +487,11 @@ class MIDIPlayer:
                 'state': self.state,
                 'speed': self.playback_speed
             }
+        
+    def duration(self) -> int:
+        with self.lock:
+            return self.total_duration_us // 1000
+        
+    def playbackState(self) -> PlayState:
+        with self.lock:
+            return self.state
