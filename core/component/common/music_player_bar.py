@@ -1,16 +1,20 @@
 from PyQt6.QtWidgets import (QHBoxLayout, 
                              QFrame)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt,pyqtSignal
 
 # 导入 Fluent Widgets
 from qfluentwidgets import (TitleLabel, BodyLabel,
                             TransparentToolButton, PushButton, Slider, 
                             FluentIcon, InfoBar, InfoBarPosition)
 
-from ..player.type import MdPlaybackParam
-from ..player.md_player import QMidiPlayer
+from ...player.type import MdPlaybackParam,SONG_CHANGE_ACTIONS
+from ...player.midi_player import QMidiPlayer
+
+
 
 class MusicPlayerBar(QFrame):
+    signal_change_song_action = pyqtSignal(SONG_CHANGE_ACTIONS)
+
     """
     使用手动列表管理 (替代 QMediaPlaylist) 的 Qt 6 播放器 Bar
     """
@@ -19,9 +23,8 @@ class MusicPlayerBar(QFrame):
         self.current_playback_rate = 1.0
         
         # --- 1. 手动播放列表 ---
-        self.song_list = [] # 存储 QUrl
-        self.current_index = -1
         self.loop_mode = "ListLoop" # "ListLoop", "NoLoop", "SongLoop"
+        self.last_song : None | dict = None
 
         # --- 2. 初始化midi播放器 ---
         self.player = QMidiPlayer()
@@ -32,9 +35,6 @@ class MusicPlayerBar(QFrame):
 
         # --- 4. 连接信号与槽 ---
         self.connect_signals()
-
-        # --- 5. 加载示例播放列表 ---
-        self.load_dummy_playlist()
 
         # 设置播放Bar的温暖样式
         self.setObjectName("MusicPlayerBar")
@@ -95,17 +95,6 @@ class MusicPlayerBar(QFrame):
         speed_layout.addWidget(self.speed_up_button)
         main_layout.addLayout(speed_layout, 1)
 
-
-    def load_dummy_playlist(self):     
-        self.song_list = [
-            "./res/midi/test.mid",
-            "./res/midi/潮鳴り.mid"
-        ]
-        
-        # 加载第一首歌准备播放
-        self.play_song_at_index(0)
-        self.player.pause() # 加载后先暂停
-
     def connect_signals(self):
         # --- 按钮点击 ---
         self.play_pause_button.clicked.connect(self.toggle_play_pause)
@@ -129,49 +118,40 @@ class MusicPlayerBar(QFrame):
         self.seek_slider.sliderMoved.connect(self.update_time_on_drag)
         self.seek_slider.clicked.connect(self.update_time_on_click)
 
+        # -- 销毁信号 ---
+        self.destroyed.connect(self.player.stop_player)
 
-    # --- 核心播放逻辑 (替代 QMediaPlaylist) ---
 
-    def play_song_at_index(self, index):
-        if 0 <= index < len(self.song_list):
-            self.current_index = index
-            media_source = self.song_list[self.current_index]
-            
-            # 设置媒体源并播放
-            self.player.prepare(md_playback_param=MdPlaybackParam(midiPath=media_source, noteToKeyPath='res/md_cfg/md-test-play.json'))
+    # --- 核心播放逻辑 ---
+    def prepare_song(self, name : str, path: str, note_to_key_cfg: dict):
+        # 设置媒体源并播放
+        self.last_song = {"name": name, "path": path, "note_to_key_cfg": note_to_key_cfg}
+        self.player.prepare(md_playback_param=MdPlaybackParam(midiPath=path, noteToKeyMapping=note_to_key_cfg))
+        self.song_info_label.setText(name)
+
+    def play_current_song(self):
+        if self.last_song:
             self.player.play()
             
-            self.song_info_label.setText(media_source)
-        else:
-            self.current_index = -1
-            self.player.stop()
-            self.song_info_label.setText("播放列表为空")
-            
-    def next_song(self):
-        if not self.song_list:
-            return
-        
-        new_index = self.current_index + 1
-        if new_index >= len(self.song_list):
-            if self.loop_mode == "ListLoop":
-                new_index = 0 # 列表循环
-            else:
-                return # 不循环
-        
-        self.play_song_at_index(new_index)
+    def next_song(self):     
+        if self.loop_mode == "ListLoop":
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.NEXT_SONG) # 列表循环
+        elif self.loop_mode == "NoLoop":
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.STOP) # 非循环，播放完停止
+        elif self.loop_mode == "SongLoop":
+            # 单曲循环，继续播放当前
+            self.play_current_song()
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.LOOP_THIS)
 
     def previous_song(self):
-        if not self.song_list:
-            return
-
-        new_index = self.current_index - 1
-        if new_index < 0:
-            if self.loop_mode == "ListLoop":
-                new_index = len(self.song_list) - 1 # 列表循环
-            else:
-                return # 不循环
-
-        self.play_song_at_index(new_index)
+        if self.loop_mode == "ListLoop":
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.PREVIOUS_SONG) # 列表循环
+        elif self.loop_mode == "NoLoop":
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.STOP) # 非循环，播放完停止
+        elif self.loop_mode == "SongLoop":
+            # 单曲循环，继续播放当前
+            self.play_current_song()
+            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.LOOP_THIS)
 
     def stop_playback(self):
         self.player.stop()
@@ -181,27 +161,14 @@ class MusicPlayerBar(QFrame):
         if self.player.playbackState() == QMidiPlayer.PlayState.PLAYING:
             self.player.pause()
         else:
-            if not self.song_list:
-                InfoBar.warning(
-                    title='播放列表为空',
-                    content='请先确保已正确加载音乐文件',
-                    parent=self,
-                    position=InfoBarPosition.TOP
-                )
-                return
-            
-            # 如果是停止状态或未加载，播放当前 (或第一首)
-            if self.current_index == -1:
-                self.play_song_at_index(0)
-            else:
-                self.player.play()
+            self.play_current_song()
 
     def on_media_status_changed(self, done):
         """ 关键槽函数：处理歌曲自动播放完毕 """
         if done:
             if self.loop_mode == "SongLoop":
                 # 单曲循环
-                self.play_song_at_index(self.current_index)
+                self.play_current_song()
             else:
                 # 触发下一曲 (ListLoop 或 NoLoop 逻辑在 next_song 中处理)
                 self.next_song()
@@ -222,17 +189,17 @@ class MusicPlayerBar(QFrame):
         print(f"position : {position}")
         if not self.seek_slider.isSliderDown():
             self.seek_slider.setValue(position)
-        self.update_time_label(position, self.player.duration())
+        self.update_time_label(position, self.seek_slider.maximum())
 
     def slider_released(self):
         self.player.seek(self.seek_slider.value())
 
     def update_time_on_drag(self, position):
-        self.update_time_label(position, self.player.duration())
+        self.update_time_label(position, self.seek_slider.maximum())
 
     def update_time_on_click(self, position):
         self.player.seek(position)
-        self.update_time_label(position, self.player.duration())      
+        self.update_time_label(position, self.seek_slider.maximum())      
 
     def format_time(self, milliseconds):
         seconds = round(milliseconds / 1000)

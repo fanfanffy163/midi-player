@@ -4,7 +4,7 @@ import time
 from typing import List, Set  # 用于类型提示
 from pynput.keyboard import Controller  
 
-from ..player.type import MdPlaybackParam,MIDI_NOTE_MAP,KEY_MAP
+from .type import MdPlaybackParam,MIDI_NOTE_MAP,KEY_MAP
 from PyQt6 import QtCore
 from enum import Enum
 import json
@@ -70,13 +70,7 @@ class QMidiPlayer(QtCore.QObject):
         self.stop()
         
         with self.lock:
-            print("开始预处理MIDI...")
-            try:
-                with open(md_playback_param.note_to_key_path, 'r', encoding='utf-8') as f:
-                    self.note_to_key = json.load(f)
-            except Exception as e:
-                print(f"解析音符转键盘配置发生错误：{e}")
-                raise
+            self.note_to_key = md_playback_param.note_to_key_mapping
 
             self.midi = mido.MidiFile(md_playback_param.midi_path)
             self.ticks_per_beat = self.midi.ticks_per_beat
@@ -155,10 +149,10 @@ class QMidiPlayer(QtCore.QObject):
             self.position_update_event.clear()
             with self.lock:
                 tmp_state = self.state
+                self.signal_play_position.emit(int(self.current_playback_time_us // 1000))
             if tmp_state == QMidiPlayer.PlayState.PLAYING:
                 # 1s回告一次
-                time.sleep(1)
-                self.signal_play_position.emit(int(self.current_playback_time_us // 1000))
+                time.sleep(1)               
             else:
                 self.position_update_event.wait(None)
         print("position_update 线程退出")
@@ -487,10 +481,6 @@ class QMidiPlayer(QtCore.QObject):
                 'state': self.state,
                 'speed': self.playback_speed
             }
-        
-    def duration(self) -> int:
-        with self.lock:
-            return self.total_duration_us // 1000
         
     def playbackState(self) -> PlayState:
         with self.lock:

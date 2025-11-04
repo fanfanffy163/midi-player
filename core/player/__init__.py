@@ -1,2 +1,2 @@
-from .md_player import *
+from .midi_player import *
 from .type import *

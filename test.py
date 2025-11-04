@@ -1,14 +1,19 @@
 import sys
+from time import sleep
 from PyQt6.QtWidgets import QWidget, QPushButton, QApplication
 from PyQt6.QtGui import QCloseEvent
 import os
 
-from core.player.md_player import QMidiPlayer
+from core.component.main_window import MainWindow
+from core.player.midi_player import QMidiPlayer
 from core.player.type import MdPlaybackParam
-from core.component.music_player_bar import MusicPlayerBar
+from core.component.common.music_player_bar import MusicPlayerBar
 from qfluentwidgets import (setTheme, Theme)
-from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel as QtLabel)
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel as QtLabel,QApplication, QWidget, QVBoxLayout, 
+                             QPushButton)
 from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QCoreApplication
+from PyQt6.QtGui import QKeyEvent
 
 class Example(QWidget):
 
@@ -80,7 +85,7 @@ class Example(QWidget):
         event.accept()
 
     def _testLoad(self, midi_file_path):
-        self.player.prepare(md_playback_param=MdPlaybackParam(midiPath=midi_file_path, noteToKeyPath='res/md_cfg/md-test-play.json'))
+        self.player.prepare(md_playback_param=MdPlaybackParam(midiPath=midi_file_path, noteToKeyMapping='res/md_cfg/md-test-play.json'))
         self.testPlay()
 
     def testPre(self):
@@ -161,5 +166,22 @@ def testBar():
     
     sys.exit(app.exec())
 
+def testMain():
+    # QApplication.setHighDpiScaleFactorRoundingPolicy(
+    #     Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    # )
+    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
+    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
+
+    app = QApplication(sys.argv)
+    
+    # 可选：设置主题 (Light, Dark, Auto)
+    # setTheme(Theme.DARK)
+    
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
 if __name__ == '__main__':
-    testBar()
+    testMain()
