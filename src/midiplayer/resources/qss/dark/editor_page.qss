@@ -1,0 +1,7 @@
+#EditorPage #ScrollContent{
+    background-color: rgb(32, 32, 32);
+}
+
+#EditorPage #ScrollContent KeyCaptureLineEdit{
+    border: 1px solid #eeeeeeff;
+}

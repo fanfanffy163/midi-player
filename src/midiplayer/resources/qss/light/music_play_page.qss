@@ -1,0 +1,16 @@
+MidiCard {
+    /* 默认状态：2px的透明边框，用于占位，防止选中时跳动 */
+    border: 2px solid transparent; 
+    border-radius: 6px;
+}
+
+#MusicPlayPage #ScrollContent{
+    background-color: rgb(243, 243, 243);
+}
+
+#MusicPlayerBar {
+    background-color: rgb(251, 251, 251);
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 8px;
+}

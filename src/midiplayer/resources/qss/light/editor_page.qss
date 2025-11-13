@@ -1,0 +1,3 @@
+#EditorPage #ScrollContent{
+    background-color: rgb(243, 243, 243);
+}
