@@ -13,9 +13,13 @@ from ...player.midi_player import QMidiPlayer
 from ...utils.config import cfg
 from ...utils.utils import Utils
 import pydirectinput
+from pynput import keyboard
+from ..settings.cmd_binding_setting import CmdKeys
+import threading
 
 class MusicPlayerBar(QFrame):
     signal_change_song_action = Signal(SONG_CHANGE_ACTIONS)
+    signal_cmd_key_pressed = Signal(object)
 
     """
     使用手动列表管理 (替代 QMediaPlaylist) 的 Qt 6 播放器 Bar
@@ -40,8 +44,56 @@ class MusicPlayerBar(QFrame):
         # --- 4. 连接信号与槽 ---
         self.connect_signals()
 
+        # --- 5. 监听键盘
+        self.keyboard_listener = keyboard.Listener(on_press=self._on_press_key_call_by_another_thread)
+        self.keyboard_listener.start()
+        self.shortcuts = cfg.get(cfg.player_play_shortcuts)
+        self.shortcuts_lock = threading.Lock()
+        self._init_shortcuts()   
+        self.signal_cmd_key_pressed.connect(self._on_press_key)
+        cfg.player_play_shortcuts.valueChanged.connect(self._on_change_shortcuts)
+
         # 设置播放Bar的温暖样式
         self.setObjectName("MusicPlayerBar")
+
+    def _init_shortcuts(self):
+        with self.shortcuts_lock:
+            self.trigger_play_shortcut = self.shortcuts.get(CmdKeys.TriggerPlay.name)
+            self.start_play_shortcut = self.shortcuts.get(CmdKeys.StartPlay.name)
+            self.pause_play_shortcut = self.shortcuts.get(CmdKeys.PausePlay.name)
+            self.play_next_shortcut = self.shortcuts.get(CmdKeys.PlayNext.name)
+            self.play_pre_shortcut = self.shortcuts.get(CmdKeys.PlayPre.name)
+
+    def _on_change_shortcuts(self, value):
+        self.shortcuts = value
+        self._init_shortcuts()
+
+    def _on_press_key_call_by_another_thread(self, key):
+        name = None
+        if hasattr(key,'name'):
+            name = key.name
+        elif hasattr(key, 'char'):
+            name = key.char
+        else:
+            name = key
+        with self.shortcuts_lock:
+            if name in [self.trigger_play_shortcut, self.start_play_shortcut, self.pause_play_shortcut, self.play_next_shortcut, self.play_pre_shortcut]:
+                self.signal_cmd_key_pressed.emit(name)
+
+    def _on_press_key(self, name): 
+        with self.shortcuts_lock:
+            if name == self.trigger_play_shortcut:
+                self.toggle_play_pause()
+            elif name == self.start_play_shortcut:
+                self.play_current_song()
+            elif name == self.pause_play_shortcut:
+                self.pause_current_song()
+            elif name == self.play_next_shortcut:
+                self.next_song()
+            elif name == self.play_pre_shortcut:
+                self.previous_song()
+            else:
+                return
 
     def init_ui(self):
         # ... (这部分和上一个示例完全相同) ...
@@ -106,7 +158,7 @@ class MusicPlayerBar(QFrame):
     def connect_signals(self):
         # --- 按钮点击 ---
         self.play_pause_button.clicked.connect(self.toggle_play_pause)
-        self.stop_button.clicked.connect(self.stop_playback)
+        self.stop_button.clicked.connect(self.stop_current_song)
         self.prev_button.clicked.connect(self.previous_song)
         self.next_button.clicked.connect(self.next_song)
         
@@ -150,8 +202,9 @@ class MusicPlayerBar(QFrame):
         else:
             self.loop_mode = "ListLoop"
 
-    def stop_player(self):
+    def stop_player_and_listener(self):
         self.player.stop_player()
+        self.keyboard_listener.stop()
 
     # --- 核心播放逻辑 ---
     def prepare_song(self, name : str, path: str, note_to_key_cfg: dict):
@@ -185,13 +238,17 @@ class MusicPlayerBar(QFrame):
             self.play_current_song()
             self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.LOOP_THIS)
 
-    def stop_playback(self):
+    def stop_current_song(self):
         self.player.stop()
         self.update_slider_position(0)
 
-    def toggle_play_pause(self):
-        if self.player.playbackState() == QMidiPlayer.PlayState.PLAYING:
+    def pause_current_song(self):
+        if self.last_song:
             self.player.pause()
+
+    def toggle_play_pause(self):
+        if self.player.get_playback_state() == QMidiPlayer.PlayState.PLAYING:
+            self.pause_current_song()
         else:
             self.play_current_song()
 

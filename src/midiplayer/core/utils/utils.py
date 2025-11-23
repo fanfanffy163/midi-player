@@ -10,6 +10,8 @@ from qfluentwidgets import (
 import sys
 from pathlib import Path
 from pypinyin import pinyin,Style
+import platformdirs
+import json
 
 class Utils:
     # --- 信息栏辅助函数 ---
@@ -53,6 +55,19 @@ class Utils:
         ).show()
 
     @staticmethod
+    def show_info_infobar(self : QWidget, title: str, content: str,duration=2000):
+        parent = self.window() if self.window() else self
+        InfoBar.info(
+            title=title,
+            content=content,
+            isClosable=True,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            orient=Qt.Orientation.Vertical,    # vertical layout
+            duration=duration,
+            parent=parent
+        ).show()
+
+    @staticmethod
     def truncate_middle(text, max_len=40):
         """超过max_len时，中间显示省略号"""
         if len(text) <= max_len:
@@ -65,6 +80,21 @@ class Utils:
     def isWin11():
         return sys.platform == 'win32' and sys.getwindowsversion().build >= 22000
     
+    @staticmethod
+    def user_path(relative_path):
+        """
+        获取用户文件
+        """
+        app_name, _, author_name = Utils.get_app_info()
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller 打包后的路径
+            data_dir = Path(platformdirs.user_data_dir(app_name, author_name))
+        else:
+            current_script_path = Path(__file__).resolve()
+            data_dir = Path.joinpath(current_script_path.parent.parent.parent, "user")
+        data_dir.mkdir(parents=True,exist_ok=True)
+        return Path.joinpath(data_dir, relative_path)
+
     @staticmethod
     def app_path(relative_path):
         """
@@ -125,3 +155,16 @@ class Utils:
     @staticmethod
     def sort_path_list_by_name(paths : list[Path]) -> list[Path]:
         return sorted(paths, key=Utils._get_path_sort_key)
+    
+    @staticmethod
+    def get_app_info():
+        try:
+            with open(Utils.app_path("resources/app_info.json"), encoding="utf-8") as f:
+                app_info = json.load(f)
+        except:
+            app_info = {}
+        app_info = app_info if isinstance(app_info,dict) else {}
+        version = app_info.get("version", "1.0.0")
+        author = app_info.get("author","fanfanffy163")
+        app_name = app_info.get("app_name","midi-player")
+        return app_name,version,author

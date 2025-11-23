@@ -7,7 +7,7 @@ from .utils import Utils
 
 class NoteKeyBindingDBManager:
     """处理所有SQLite数据库操作"""
-    def __init__(self, db_name=str(Utils.app_path("resources/keybindings.db"))):
+    def __init__(self, db_name=str(Utils.user_path("keybindings.db"))):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
         self.create_table()

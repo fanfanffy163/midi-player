@@ -271,7 +271,7 @@ class MidiCards(QWidget):
     
     signal_card_clicked = Signal(Path)
     ITEMS_PER_PAGE = 50
-    INDEX_DIR = Path(Utils.app_path("midi_index_whoosh"))
+    INDEX_DIR = Path(Utils.user_path("midi_index_whoosh"))
     
     # (移除 MAX_DISPATCH_TASKS，不再需要)
 
@@ -414,6 +414,7 @@ class MidiCards(QWidget):
             self.all_midi_paths.clear()
             self.current_filtered_paths.clear()
             
+            self.clear_layout(self.card_layout)
             task = IndexBuilderTask(dir_path, self.INDEX_DIR)
             task.signals.index_ready.connect(self.on_index_ready)
             self.threadpool.start(task)
@@ -470,8 +471,6 @@ class MidiCards(QWidget):
         all_paths = Utils.sort_path_list_by_name(all_paths)
         self.all_midi_paths = all_paths
         self.on_search_results(all_paths) 
-
-    # --- 架构核心：重构 ---
 
     # --- (重构) 层级 1：渲染与分发 ---
     @Slot(list)
@@ -532,12 +531,6 @@ class MidiCards(QWidget):
                 # 关键: 连接到新的槽
                 task.signals.single_load_complete.connect(self._on_single_load_complete)
                 self.threadpool.start(task)
-
-    # --- (移除) 层级 2：收集 ---
-    # (方法 _on_sub_batch_complete 已被移除)
-
-    # --- (移除) 层级 3：渲染 ---
-    # (方法 _on_all_batches_complete 已被移除)
 
     # --- (新增) 异步更新槽 ---
     @Slot(str, str, object)

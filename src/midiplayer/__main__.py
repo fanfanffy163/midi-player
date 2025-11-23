@@ -1,5 +1,6 @@
 from midiplayer.app import main
+import multiprocessing
 
 if __name__ == "__main__":
-    print(__file__)
+    multiprocessing.freeze_support()
     main()

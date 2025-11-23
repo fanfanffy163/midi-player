@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QWidget, QLabel, QFileDialog
 from ...utils.utils import Utils
 from ...utils.config import cfg
 from ...utils.style_sheet import StyleSheet
+from ..settings.cmd_binding_setting import CmdBindingSettingCard
 import pydirectinput
 
 class SettingPage(ScrollArea):
@@ -94,6 +95,19 @@ class SettingPage(ScrollArea):
             cfg.player_play_disable_note_fitting,
             self.appGroup
         )
+        self.shortcutsSettingCard = CmdBindingSettingCard(
+            cfg.player_play_shortcuts,
+            FIF.SPEED_HIGH,
+            '播放快捷键设置',
+            '设置快捷按键后台控制播放',
+        )
+        self.keyPressAndUpCard = SwitchSettingCard(
+            FIF.BASKETBALL,
+            '按键后立即抬起',
+            '按下键后立即抬起按键,无视midi文件的按键抬起时机',
+            cfg.player_play_key_press_and_up,
+            self.appGroup
+        )
         self.__initWidget()
 
     def __initWidget(self):
@@ -118,7 +132,7 @@ class SettingPage(ScrollArea):
         self.personalGroup.addSettingCard(self.themeCard)
         self.personalGroup.addSettingCard(self.themeColorCard)
         
-        self.appGroup.addSettingCards([self.singleLoopCard,self.singleTraceCard,self.midiFolderCard,self.playDelayCard,self.pressDelayCard,self.disableNoteFittingCard])
+        self.appGroup.addSettingCards([self.shortcutsSettingCard,self.singleLoopCard,self.singleTraceCard,self.midiFolderCard,self.playDelayCard,self.pressDelayCard,self.disableNoteFittingCard,self.keyPressAndUpCard,])
 
         # add setting card group to layout
         self.expandLayout.setSpacing(28)

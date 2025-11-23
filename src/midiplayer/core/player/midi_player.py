@@ -75,6 +75,7 @@ class QMidiPlayer(QtCore.QObject):
         self.position_timer.setInterval(1000) # 1000ms = 1s
         self.position_timer.timeout.connect(self._on_position_update)
 
+        
     def _on_position_update(self):
         # 这里的锁粒度非常小，很安全
         with self.clock_lock:
@@ -222,6 +223,7 @@ class QMidiPlayer(QtCore.QObject):
             try:
                 task = self.task_queue.get(timeout=0.1)
                 event_type, keys = task
+                key_press_and_up = cfg.get(cfg.player_play_key_press_and_up)
              
                 if event_type == 'note_on':
                     control_keys = [k for k in keys if k in CONTROL_KEY_MAP]
@@ -235,16 +237,19 @@ class QMidiPlayer(QtCore.QObject):
                     for c_k in reversed(control_keys):
                         pydirectinput.keyUp(c_k)
 
-                    # 使用锁保护 self.pressed_keys
-                    with self.keys_lock:
-                        self.pressed_keys.update(normal_keys)
-                    # print(f"按下键: {key_to_press}") # 调试时开启
+                    if key_press_and_up :
+                        for key_to_press in reversed(normal_keys):
+                            pydirectinput.keyUp(key_to_press)
+                    else:
+                        # 使用锁保护 self.pressed_keys
+                        with self.keys_lock:
+                            self.pressed_keys.update(normal_keys)
                 else:
                     normal_keys = [k for k in keys if k not in CONTROL_KEY_MAP]
                     for key_to_release in normal_keys:
-                        pydirectinput.keyUp(key_to_release)
-                    with self.keys_lock:
-                        self.pressed_keys.difference_update(normal_keys)
+                        with self.keys_lock:                            
+                            pydirectinput.keyUp(key_to_release) if key_to_release in self.pressed_keys else None
+                            self.pressed_keys.discard(key_to_release)
                     # print(f"释放键: {key_to_press}") # 调试时开启
                 
                 self.task_queue.task_done()
@@ -558,6 +563,6 @@ class QMidiPlayer(QtCore.QObject):
                 'speed': self.playback_speed
             }
         
-    def playbackState(self) -> PlayState:
+    def get_playback_state(self) -> PlayState:
         with self.clock_lock:
             return self.state

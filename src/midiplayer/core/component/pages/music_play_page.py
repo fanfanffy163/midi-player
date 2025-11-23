@@ -48,8 +48,8 @@ class MusicPlayPage(QWidget):
         # 连接信号与槽
         self.connect_signals()
 
-    def stop_player(self):
-        self.music_player_bar.stop_player()
+    def stop_play(self):
+        self.music_player_bar.stop_player_and_listener()
 
     def refresh_preset_list(self):
         self.present_list_widget.refresh_preset_list()

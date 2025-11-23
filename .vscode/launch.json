@@ -2,17 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Run Project", // 随便起名
+      "name": "Python: Run Project",
       "type": "debugpy",
       "request": "launch",
       "console": "integratedTerminal",
-      // "program" 会 "作为文件运行"，是错误的
-      // "program": "${workspaceFolder}/midiplayer/__main__.py", 
-
-      // "module" 会 "作为项目运行"，是正确的
       "module": "midiplayer", 
-
-      // 确保它使用你的 venv
+      "justMyCode": false,
       "python": "${workspaceFolder}/beeware-venv/Scripts/python.exe",
       "env": {
           "PYTHONPATH": "${workspaceFolder}/src"

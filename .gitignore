@@ -223,3 +223,4 @@ requirements-old.txt
 /src/midiplayer/midi_index_whoosh
 /src/midiplayer/resources/keybindings.db
 /src/midiplayer/resources/app_config.json
+/src/midiplayer/user
