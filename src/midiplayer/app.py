@@ -1,4 +1,7 @@
+import os
+import shutil
 import sys
+import time
 
 from loguru import logger
 from PySide6.QtWidgets import QApplication
@@ -26,13 +29,14 @@ def main():
 
     # 日志
     logger.remove()
+    if sys.stderr:
+        logger.add(
+            sys.stderr,
+            level="DEBUG",
+            diagnose=True,
+        )
     logger.add(
-        sys.stderr,
-        level="DEBUG",
-        diagnose=True,
-    )
-    logger.add(
-        Utils.app_root_path("log") / "{time}.log",
+        Utils.user_path("log") / "{time}.log",
         rotation="20 MB",
         retention="7 days",
         compression="zip",
@@ -40,6 +44,17 @@ def main():
         level="INFO",
     )
     logger.info("app starting...")
+    logger.info(f"应用启动参数 {sys.argv}")
+    if len(sys.argv) >= 3:
+        cmd = sys.argv[1]
+        temp_path = sys.argv[2]
+        if cmd == "update complete" and os.path.exists(temp_path):
+            time.sleep(1)
+            try:
+                logger.info(f"删除更新临时文件夹 {temp_path}")
+                shutil.rmtree(temp_path)
+            except Exception as e:
+                logger.opt(exception=e).error("删除更新文件夹出错")
 
     # 窗口
     app = QApplication(sys.argv)

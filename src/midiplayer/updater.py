@@ -95,7 +95,10 @@ def install_and_restart(zip_path, install_dir, main_exe, wait_pid):
 
             target_exe = os.path.join(install_dir, main_exe)
             if os.path.exists(target_exe):
-                subprocess.Popen([target_exe])
+                # D. 启动
+                subprocess.Popen(
+                    [target_exe, "update complete", os.path.dirname(zip_path)]
+                )
 
             root.destroy()
 

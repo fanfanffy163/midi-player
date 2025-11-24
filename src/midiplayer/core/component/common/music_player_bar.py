@@ -250,32 +250,12 @@ class MusicPlayerBar(QFrame):
             self.player.play()
 
     def next_song(self):
-        if self.loop_mode == "ListLoop":
-            self.signal_change_song_action.emit(
-                SONG_CHANGE_ACTIONS.NEXT_SONG
-            )  # 列表循环
-        elif self.loop_mode == "NoLoop":
-            self.signal_change_song_action.emit(
-                SONG_CHANGE_ACTIONS.STOP
-            )  # 非循环，播放完停止
-        elif self.loop_mode == "SongLoop":
-            # 单曲循环，继续播放当前
-            self.play_current_song()
-            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.LOOP_THIS)
+        self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.NEXT_SONG)  # 列表循环
 
     def previous_song(self):
-        if self.loop_mode == "ListLoop":
-            self.signal_change_song_action.emit(
-                SONG_CHANGE_ACTIONS.PREVIOUS_SONG
-            )  # 列表循环
-        elif self.loop_mode == "NoLoop":
-            self.signal_change_song_action.emit(
-                SONG_CHANGE_ACTIONS.STOP
-            )  # 非循环，播放完停止
-        elif self.loop_mode == "SongLoop":
-            # 单曲循环，继续播放当前
-            self.play_current_song()
-            self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.LOOP_THIS)
+        self.signal_change_song_action.emit(
+            SONG_CHANGE_ACTIONS.PREVIOUS_SONG
+        )  # 列表循环
 
     def stop_current_song(self):
         self.player.stop()

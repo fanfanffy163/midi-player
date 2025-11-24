@@ -4,7 +4,7 @@
         {
             "label": "app exe",
             "type": "shell",
-            "command": "${workspaceFolder}\\beeware-venv\\Scripts\\pyinstaller.exe",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
                 "MidiPlayer.spec",
                 "--noconfirm"
@@ -16,7 +16,7 @@
         {
             "label": "updater exe",
             "type": "shell",
-            "command": "${workspaceFolder}\\beeware-venv\\Scripts\\pyinstaller.exe",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
                 "updater.spec",
                 "--noconfirm"
@@ -26,16 +26,27 @@
             }
         },
         {
+            "label": "package update zip",
+            "type": "shell",
+            "windows": {
+                "command": "& 'C:\\Program Files\\7-Zip\\7z.exe' a -tzip '${workspaceFolder}\\src\\midiplayer\\dist\\midiplayer-updater-package.zip' '${workspaceFolder}\\src\\midiplayer\\dist\\midiplayer\\*'"
+            },
+            "problemMatcher": [
+                "$python"
+            ]
+        },
+        {
             "label": "app with updater exe",
             "dependsOn": [
                 "updater exe",
-                "app exe"
+                "app exe",
+                "package update zip"
             ],
             "dependsOrder": "sequence",
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
-        },
+        }
     ]
 }
