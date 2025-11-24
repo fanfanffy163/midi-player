@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "app exe",
+            "type": "shell",
+            "command": "${workspaceFolder}\\beeware-venv\\Scripts\\pyinstaller.exe",
+            "args": [
+                "MidiPlayer.spec",
+                "--noconfirm"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\src\\midiplayer"
+            }
+        },
+        {
+            "label": "updater exe",
+            "type": "shell",
+            "command": "${workspaceFolder}\\beeware-venv\\Scripts\\pyinstaller.exe",
+            "args": [
+                "updater.spec",
+                "--noconfirm"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\src\\midiplayer"
+            }
+        },
+        {
+            "label": "app with updater exe",
+            "dependsOn": [
+                "updater exe",
+                "app exe"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+    ]
+}

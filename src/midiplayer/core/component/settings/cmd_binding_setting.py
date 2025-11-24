@@ -1,13 +1,22 @@
-from qfluentwidgets import (ExpandSettingCard,FluentIconBase,qconfig, ConfigItem, ConfigSerializer)
-from PySide6.QtWidgets import QLabel
-# coding:utf-8
-from typing import Union
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QLabel
-from ..common.key_binding_widget import KeyBindingWidget
 import json
 from copy import deepcopy
 from enum import Enum
+
+# coding:utf-8
+from typing import Union
+
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QLabel
+from qfluentwidgets import (
+    ConfigItem,
+    ConfigSerializer,
+    ExpandSettingCard,
+    FluentIconBase,
+    qconfig,
+)
+
+from ..common.key_binding_widget import KeyBindingWidget
+
 
 class CmdKeys(Enum):
     TriggerPlay = "切换播放"
@@ -16,8 +25,9 @@ class CmdKeys(Enum):
     PlayNext = "下一首"
     PlayPre = "上一首"
 
+
 class JsonSerializer(ConfigSerializer):
-    """ enumeration class serializer """
+    """enumeration class serializer"""
 
     def serialize(self, value):
         return json.dumps(value, ensure_ascii=False)
@@ -25,8 +35,16 @@ class JsonSerializer(ConfigSerializer):
     def deserialize(self, value):
         return json.loads(value)
 
+
 class CmdBindingSettingCard(ExpandSettingCard):
-    def __init__(self, configItem : ConfigItem, icon: Union[str, QIcon, FluentIconBase], title, content=None, parent=None):
+    def __init__(
+        self,
+        configItem: ConfigItem,
+        icon: Union[str, QIcon, FluentIconBase],
+        title,
+        content=None,
+        parent=None,
+    ):
         """
         Parameters
         ----------
@@ -64,7 +82,7 @@ class CmdBindingSettingCard(ExpandSettingCard):
         for member in CmdKeys:
             val = member.value
             name = member.name
-            binding_widget = KeyBindingWidget(val,self,1)
+            binding_widget = KeyBindingWidget(val, self, 1)
             v = value[name] if name in value else None
             binding_widget.set_binding([v] if v else [])
             self.viewLayout.addWidget(binding_widget)
@@ -73,8 +91,8 @@ class CmdBindingSettingCard(ExpandSettingCard):
         self._adjustViewSize()
 
     def __onKeysSet(self, val, keys: list[str]):
-        """ button clicked slot """
-        value =  deepcopy(qconfig.get(self.configItem))
+        """button clicked slot"""
+        value = deepcopy(qconfig.get(self.configItem))
         member = CmdKeys(val)
         value[member.name] = keys[0] if len(keys) > 0 else None
         if value[member.name] is None:

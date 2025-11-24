@@ -1,23 +1,20 @@
-from typing import Dict, Optional
 from pathlib import Path
+from typing import Dict, Optional
 
-from PySide6.QtCore import (
-    Qt
-)
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout,
-    QHBoxLayout, QListWidgetItem
-)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
 
 from ...utils.note_key_binding_db_manger import NoteKeyBindingDBManager
-from ...utils.utils import Utils
 from ...utils.style_sheet import StyleSheet
+from ...utils.utils import Utils
+from ..common.midi_cards import MidiCards
 from ..common.music_player_bar import MusicPlayerBar
 from ..common.present_list import PresentList
-from ..common.midi_cards import MidiCards
+
 
 class MusicPlayPage(QWidget):
     """预设管理页面"""
+
     def __init__(self, db: NoteKeyBindingDBManager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("MusicPlayPage")
@@ -28,7 +25,7 @@ class MusicPlayPage(QWidget):
         self.song_name: str = None
         self.song_path: Path = None
 
-        #style
+        # style
         StyleSheet.MUSIC_PLAY_PAGE.apply(self)
 
         self.main_layout = QVBoxLayout(self)
@@ -37,8 +34,8 @@ class MusicPlayPage(QWidget):
         self.top_layout = QHBoxLayout()
         self.present_list_widget = PresentList(self.db, self)
         self.midi_tree = MidiCards(self)
-        self.top_layout.addWidget(self.present_list_widget, 1) # 左侧占1份
-        self.top_layout.addWidget(self.midi_tree, 2) # 右侧占1份
+        self.top_layout.addWidget(self.present_list_widget, 1)  # 左侧占1份
+        self.top_layout.addWidget(self.midi_tree, 2)  # 右侧占1份
         self.main_layout.addLayout(self.top_layout)
 
         # 添加音乐播放器控制栏
@@ -57,7 +54,9 @@ class MusicPlayPage(QWidget):
     def connect_signals(self):
         self.present_list_widget.signal_item_selected.connect(self.on_preset_selected)
         self.midi_tree.signal_card_clicked.connect(self.on_midi_card_clicked)
-        self.music_player_bar.signal_change_song_action.connect(self.on_change_song_action)
+        self.music_player_bar.signal_change_song_action.connect(
+            self.on_change_song_action
+        )
 
     def on_preset_selected(self, item: Optional[QListWidgetItem]):
         """处理预设选择事件"""
@@ -67,7 +66,9 @@ class MusicPlayPage(QWidget):
             if mappings is not None:
                 self.note_to_key_mappings = mappings
             else:
-                Utils.show_warning_infobar(self,"预设加载失败", f"无法加载预设：{preset_name}")
+                Utils.show_warning_infobar(
+                    self, "预设加载失败", f"无法加载预设：{preset_name}"
+                )
 
     def on_midi_card_clicked(self, midi_path: Path):
         self.song_path = midi_path
@@ -76,11 +77,13 @@ class MusicPlayPage(QWidget):
             self.music_player_bar.prepare_song(
                 name=self.song_name,
                 path=str(self.song_path),
-                note_to_key_cfg=self.note_to_key_mappings
+                note_to_key_cfg=self.note_to_key_mappings,
             )
             self.music_player_bar.play_current_song()
         else:
-            Utils.show_warning_infobar(self, "未选择预设", "请先从左侧列表中选择一个按键预设")
+            Utils.show_warning_infobar(
+                self, "未选择预设", "请先从左侧列表中选择一个按键预设"
+            )
 
     def on_change_song_action(self, action):
         """处理歌曲切换操作"""

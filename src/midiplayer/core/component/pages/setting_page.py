@@ -1,19 +1,28 @@
 # coding:utf-8
-from qfluentwidgets import (SettingCardGroup, SwitchSettingCard, OptionsSettingCard, PushSettingCard,
-                            ScrollArea,
-                            ExpandLayout, CustomColorSettingCard,
-                            setTheme, setThemeColor, RangeSettingCard)
-from qfluentwidgets import FluentIcon as FIF
+import pydirectinput
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QLabel, QFileDialog
-from ...utils.utils import Utils
+from PySide6.QtWidgets import QFileDialog, QLabel, QWidget
+from qfluentwidgets import CustomColorSettingCard, ExpandLayout
+from qfluentwidgets import FluentIcon as FIF
+from qfluentwidgets import (
+    OptionsSettingCard,
+    PushSettingCard,
+    RangeSettingCard,
+    ScrollArea,
+    SettingCardGroup,
+    SwitchSettingCard,
+    setTheme,
+    setThemeColor,
+)
+
 from ...utils.config import cfg
 from ...utils.style_sheet import StyleSheet
+from ...utils.utils import Utils
 from ..settings.cmd_binding_setting import CmdBindingSettingCard
-import pydirectinput
+
 
 class SettingPage(ScrollArea):
-    """ Setting interface """
+    """Setting interface"""
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -22,11 +31,10 @@ class SettingPage(ScrollArea):
         self.scrollWidget = QWidget()
         self.expandLayout = ExpandLayout(self.scrollWidget)
         # setting label
-        self.settingLabel = QLabel('设置', self)
+        self.settingLabel = QLabel("设置", self)
 
         # personalization
-        self.personalGroup = SettingCardGroup(
-            "个性化", self.scrollWidget)
+        self.personalGroup = SettingCardGroup("个性化", self.scrollWidget)
         # self.micaCard = SwitchSettingCard(
         #     FIF.TRANSPARENT,
         #     '云母效果',
@@ -37,76 +45,75 @@ class SettingPage(ScrollArea):
         self.themeCard = OptionsSettingCard(
             cfg.themeMode,
             FIF.BRUSH,
-            '应用主题',
-            '调整你的应用的外观',
-            texts=['浅色', '深色', '跟随系统设置'],
-            parent=self.personalGroup
+            "应用主题",
+            "调整你的应用的外观",
+            texts=["浅色", "深色", "跟随系统设置"],
+            parent=self.personalGroup,
         )
         self.themeColorCard = CustomColorSettingCard(
             cfg.themeColor,
             FIF.PALETTE,
-            '主题颜色',
-            '调整你的应用的主题色',
-            self.personalGroup
+            "主题颜色",
+            "调整你的应用的主题色",
+            self.personalGroup,
         )
 
         # app
-        self.appGroup = SettingCardGroup(
-            '应用设置', self.scrollWidget)
+        self.appGroup = SettingCardGroup("应用设置", self.scrollWidget)
         self.singleLoopCard = SwitchSettingCard(
             FIF.SPEAKERS,
-            '单曲循环',
-            '循环播放当前曲目',
+            "单曲循环",
+            "循环播放当前曲目",
             cfg.player_play_single_loop,
-            self.appGroup
+            self.appGroup,
         )
         self.singleTraceCard = SwitchSettingCard(
             FIF.TRAIN,
-            '单轨播放',
-            '只选取主音轨进行播放(已播放歌曲重新播放后生效)',
+            "单轨播放",
+            "只选取主音轨进行播放(已播放歌曲重新播放后生效)",
             cfg.player_play_single_track,
-            self.appGroup
+            self.appGroup,
         )
         self.midiFolderCard = PushSettingCard(
-            '选择文件夹',
+            "选择文件夹",
             FIF.FOLDER,
-            'MIDI文件路径，可以是多个midi目录的根路径',
+            "MIDI文件路径，可以是多个midi目录的根路径",
             cfg.get(cfg.midi_folder),
-            self.appGroup
+            self.appGroup,
         )
         self.playDelayCard = RangeSettingCard(
             cfg.player_play_delay_time,
             FIF.ALBUM,
-            '播放延迟时间',
-            '每首歌和下一首歌播放中间的延时，秒级单位',
-            self.appGroup
+            "播放延迟时间",
+            "每首歌和下一首歌播放中间的延时，秒级单位",
+            self.appGroup,
         )
         self.pressDelayCard = RangeSettingCard(
             cfg.player_play_press_delay,
             FIF.AIRPLANE,
-            '按键延迟时间',
-            '两个按键之间的延迟，单位为毫秒',
-            self.appGroup
+            "按键延迟时间",
+            "两个按键之间的延迟，单位为毫秒",
+            self.appGroup,
         )
         self.disableNoteFittingCard = SwitchSettingCard(
             FIF.DICTIONARY,
-            '原始音符播放',
-            '开启配置后将不会自动升高或降低音高牺牲音质确保最高命中率，建议在预设信息比较完善时开启',
+            "原始音符播放",
+            "开启配置后将不会自动升高或降低音高牺牲音质确保最高命中率，建议在预设信息比较完善时开启",
             cfg.player_play_disable_note_fitting,
-            self.appGroup
+            self.appGroup,
         )
         self.shortcutsSettingCard = CmdBindingSettingCard(
             cfg.player_play_shortcuts,
             FIF.SPEED_HIGH,
-            '播放快捷键设置',
-            '设置快捷按键后台控制播放',
+            "播放快捷键设置",
+            "设置快捷按键后台控制播放",
         )
         self.keyPressAndUpCard = SwitchSettingCard(
             FIF.BASKETBALL,
-            '按键后立即抬起',
-            '按下键后立即抬起按键,无视midi文件的按键抬起时机',
+            "按键后立即抬起",
+            "按下键后立即抬起按键,无视midi文件的按键抬起时机",
             cfg.player_play_key_press_and_up,
-            self.appGroup
+            self.appGroup,
         )
         self.__initWidget()
 
@@ -116,10 +123,10 @@ class SettingPage(ScrollArea):
         self.setWidget(self.scrollWidget)
         self.setWidgetResizable(True)
 
-        self.scrollWidget.setObjectName('scrollWidget')
-        self.settingLabel.setObjectName('settingLabel')
+        self.scrollWidget.setObjectName("scrollWidget")
+        self.settingLabel.setObjectName("settingLabel")
         StyleSheet.SETTING_PAGE.apply(self)
-        #self.micaCard.setEnabled(Utils.isWin11())
+        # self.micaCard.setEnabled(Utils.isWin11())
 
         # initialize layout
         self.__initLayout()
@@ -128,11 +135,22 @@ class SettingPage(ScrollArea):
     def __initLayout(self):
         self.settingLabel.move(36, 30)
 
-        #self.personalGroup.addSettingCard(self.micaCard)
+        # self.personalGroup.addSettingCard(self.micaCard)
         self.personalGroup.addSettingCard(self.themeCard)
         self.personalGroup.addSettingCard(self.themeColorCard)
-        
-        self.appGroup.addSettingCards([self.shortcutsSettingCard,self.singleLoopCard,self.singleTraceCard,self.midiFolderCard,self.playDelayCard,self.pressDelayCard,self.disableNoteFittingCard,self.keyPressAndUpCard,])
+
+        self.appGroup.addSettingCards(
+            [
+                self.shortcutsSettingCard,
+                self.singleLoopCard,
+                self.singleTraceCard,
+                self.midiFolderCard,
+                self.playDelayCard,
+                self.pressDelayCard,
+                self.disableNoteFittingCard,
+                self.keyPressAndUpCard,
+            ]
+        )
 
         # add setting card group to layout
         self.expandLayout.setSpacing(28)
@@ -141,16 +159,15 @@ class SettingPage(ScrollArea):
         self.expandLayout.addWidget(self.appGroup)
 
     def __onMidiFolderCardClicked(self):
-        """ download folder card clicked slot """
-        folder = QFileDialog.getExistingDirectory(
-            self, '选择文件夹', "./")
+        """download folder card clicked slot"""
+        folder = QFileDialog.getExistingDirectory(self, "选择文件夹", "./")
         if not folder or cfg.get(cfg.midi_folder) == folder:
             return
 
         cfg.set(cfg.midi_folder, folder)
         self.midiFolderCard.setContent(folder)
 
-    def _on_press_delay_change(self,time):
+    def _on_press_delay_change(self, time):
         pydirectinput.PAUSE = time / 1000
 
     def __connectSignalToSlot(self):
@@ -159,6 +176,5 @@ class SettingPage(ScrollArea):
         cfg.themeColorChanged.connect(setThemeColor)
         cfg.player_play_delay_time.valueChanged.connect(self._on_press_delay_change)
 
-        #app
+        # app
         self.midiFolderCard.clicked.connect(self.__onMidiFolderCardClicked)
-

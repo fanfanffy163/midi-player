@@ -1,28 +1,28 @@
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import uuid
 from typing import Optional
 
+import requests
+from packaging.version import parse
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (
-    QApplication
-)
+from PySide6.QtWidgets import QApplication
+from qfluentwidgets import (FluentIcon, FluentWindow, MessageBox,
+                            NavigationItemPosition)
 
-from qfluentwidgets import (
-    FluentIcon, FluentWindow,NavigationItemPosition,MessageBox, InfoBar, InfoBarPosition,NavigationAvatarWidget
-)
-
-from midiplayer.core.component.common.update_info_dialog import UpdateProgressDialog
+from midiplayer.core.component.common.update_info_dialog import \
+    UpdateProgressDialog
 from midiplayer.core.utils.utils import Utils
+
 from ..component.pages.editor_page import EditorPage
-from .pages.present_page import PresentPage
 from ..component.pages.music_play_page import MusicPlayPage
 from ..component.pages.setting_page import SettingPage
 from ..utils.note_key_binding_db_manger import NoteKeyBindingDBManager
-import requests
-from PySide6.QtCore import QThread, Signal
-import os
-import shutil
-import tempfile
-import subprocess
+from .pages.present_page import PresentPage
 
 
 class CheckUpdateThread(QThread):
@@ -45,8 +45,7 @@ class CheckUpdateThread(QThread):
             data = resp.json()
             remote_ver = data.get("tag_name", "").lstrip("v")
             
-            # 简单的字符串版本对比，生产环境建议用 packaging.version
-            if remote_ver > self.current_version:
+            if parse(remote_ver) > parse(self.current_version):
                 self.check_finished.emit({"success": True, "data": data, "new_version": remote_ver})
             else:
                 self.check_finished.emit({"success": False, "msg": "已是最新版本"})
@@ -64,14 +63,12 @@ class DownloadThread(QThread):
         super().__init__()
         self.url = url
         self.save_path = save_path
-        # 公益加速代理，解决GitHub下载慢 (可选: https://mirror.ghproxy.com/)
-        self.proxy_prefix = "https://mirror.ghproxy.com/" 
 
     def run(self):
-        final_url = self.proxy_prefix + self.url
+        final_url = self.url
         try:
             # stream=True 是显示进度的关键
-            with requests.get(final_url, stream=True, timeout=15) as r:
+            with requests.get(final_url, stream=True, timeout=30, verify=False,) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
                 
@@ -102,7 +99,10 @@ class MainWindow(FluentWindow):
     
     def __init__(self):
         super().__init__()
-        _, version, _ = Utils.get_app_info()
+        app_name, version, author = Utils.get_app_info()
+        self.app_name = app_name
+        self.app_version = version
+        self.app_author = author
         self.setWindowTitle(f"MIDI按键播放器(v{version})")
         self.setWindowIcon(QIcon(FluentIcon.MUSIC.path()))
 
@@ -161,8 +161,7 @@ class MainWindow(FluentWindow):
     def check_update(self):
         Utils.show_info_infobar(self, "提示", "正在连接 GitHub...")
         # 替换你的 GitHub 信息
-        app_name, version, author_name = Utils.get_app_info()
-        self.check_thread = CheckUpdateThread(version, author_name, app_name)
+        self.check_thread = CheckUpdateThread(self.app_version, self.app_author, self.app_name)
         self.check_thread.check_finished.connect(self.on_check_finished)
         self.check_thread.start()
 
@@ -190,7 +189,10 @@ class MainWindow(FluentWindow):
     def start_download(self, url):
         # 1. 准备临时文件路径
         temp_dir = tempfile.gettempdir()
-        save_path = os.path.join(temp_dir, "update_pkg.zip")
+        unique_id = str(uuid.uuid4())
+        target_dir = os.path.join(temp_dir, self.app_name + "_" + unique_id)
+        os.makedirs(target_dir, exist_ok=True)
+        save_path = os.path.join(target_dir, "update_pkg.zip")
         
         # 2. 显示进度弹窗
         self.progress_dlg = UpdateProgressDialog(self)
@@ -220,19 +222,15 @@ class MainWindow(FluentWindow):
         """核心：准备环境，启动 updater.exe，自杀"""
         try:
             # A. 寻找 updater.exe (开发环境/打包环境兼容)
-            if getattr(sys, 'frozen', False):
-                base_path = sys._MEIPASS # PyInstaller 临时目录
-            else:
-                base_path = os.path.dirname(os.path.abspath(__file__))
             
-            updater_src = os.path.join(base_path, "updater.exe")
+            updater_src = str(Utils.app_root_path("updater.exe"))
             
             if not os.path.exists(updater_src):
                 Utils.show_error_infobar(self,"错误", "丢失 updater.exe 文件！")
                 return
 
             # B. 复制 updater 到临时目录 (防止被锁)
-            temp_updater = os.path.join(tempfile.gettempdir(), "updater_installer.exe")
+            temp_updater = os.path.join(os.path.dirname(zip_path), "updater_installer.exe")
             shutil.copy(updater_src, temp_updater)
 
             # C. 准备参数

@@ -1,14 +1,23 @@
 # coding:utf-8
 
 from typing import Callable
-from PySide6.QtGui import QColor
 
-from qfluentwidgets import MessageBoxBase, SubtitleLabel, LineEdit, CaptionLabel
+from PySide6.QtGui import QColor
+from qfluentwidgets import CaptionLabel, LineEdit, MessageBoxBase, SubtitleLabel
+
 
 class ConfirmInputBox(MessageBoxBase):
-    """ Custom message box """
+    """Custom message box"""
 
-    def __init__(self, title, place_holder, parent, default_val = '', validater : Callable = None, warning = '输入信息有误'):
+    def __init__(
+        self,
+        title,
+        place_holder,
+        parent,
+        default_val="",
+        validater: Callable = None,
+        warning="输入信息有误",
+    ):
         super().__init__(parent.window())
         self.title_label = SubtitleLabel(title, self)
         self.message_edit = LineEdit(self)
@@ -27,8 +36,8 @@ class ConfirmInputBox(MessageBoxBase):
         self.warning_label.hide()
 
         # change the text of button
-        self.yesButton.setText('确定')
-        self.cancelButton.setText('取消')
+        self.yesButton.setText("确定")
+        self.cancelButton.setText("取消")
         self.validater = validater
 
         self.widget.setMinimumWidth(350)
@@ -36,14 +45,14 @@ class ConfirmInputBox(MessageBoxBase):
         # self.hideYesButton()
 
     def validate(self):
-        """ Rewrite the virtual method """
-        if(self.validater):
+        """Rewrite the virtual method"""
+        if self.validater:
             isValid = self.validater(self.message_edit.text())
             self.warning_label.setHidden(isValid)
             self.message_edit.setError(not isValid)
             return isValid
         return True
-    
+
     def exec(self):
         ok = super().exec()
         if ok:

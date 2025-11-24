@@ -1,12 +1,17 @@
-import sqlite3
 import json
+import sqlite3
 from typing import Dict, List, Optional
+
+from loguru import logger
+
 from .utils import Utils
 
 # --- 数据库管理器 ---
 
+
 class NoteKeyBindingDBManager:
     """处理所有SQLite数据库操作"""
+
     def __init__(self, db_name=str(Utils.user_path("keybindings.db"))):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
@@ -14,13 +19,15 @@ class NoteKeyBindingDBManager:
 
     def create_table(self):
         with self.conn:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS presets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     mappings TEXT NOT NULL
                 );
-            """)
+            """
+            )
 
     def save_preset(self, name: str, mappings: Dict[str, str]) -> bool:
         """保存或更新一个预设。"""
@@ -29,11 +36,11 @@ class NoteKeyBindingDBManager:
             with self.conn:
                 self.conn.execute(
                     "INSERT OR REPLACE INTO presets (name, mappings) VALUES (?, ?)",
-                    (name, mappings_json)
+                    (name, mappings_json),
                 )
             return True
         except sqlite3.Error as e:
-            print(f"数据库保存错误: {e}")
+            logger.opt(exception=e).error(f"数据库保存错误: {e}")
             return False
 
     def load_preset(self, name: str) -> Optional[Dict[str, str]]:
@@ -52,7 +59,7 @@ class NoteKeyBindingDBManager:
                 self.conn.execute("DELETE FROM presets WHERE name = ?", (name,))
             return True
         except sqlite3.Error as e:
-            print(f"数据库删除错误: {e}")
+            logger.opt(exception=e).error(f"数据库删除错误: {e}")
             return False
 
     def list_presets(self, search_query: str = "") -> List[str]:
@@ -64,7 +71,7 @@ class NoteKeyBindingDBManager:
         else:
             query = "SELECT name FROM presets ORDER BY name"
             cursor.execute(query)
-        
+
         return [row[0] for row in cursor.fetchall()]
 
     def duplicate_preset(self, old_name: str, new_name: str) -> bool:
@@ -72,11 +79,11 @@ class NoteKeyBindingDBManager:
         mappings = self.load_preset(old_name)
         if mappings is None:
             return False
-        
+
         if self.load_preset(new_name) is not None:
             # 新名称已存在
             return False
-            
+
         return self.save_preset(new_name, mappings)
 
     def __del__(self):

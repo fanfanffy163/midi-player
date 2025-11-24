@@ -1,70 +1,66 @@
-
-from PySide6.QtCore import (
-    Qt
-)
-from PySide6.QtWidgets import QWidget,QLabel
-
-from qfluentwidgets import (
-    InfoBar, InfoBarPosition
-)
+import json
 import sys
 from pathlib import Path
-from pypinyin import pinyin,Style
+
 import platformdirs
-import json
+from pypinyin import Style, pinyin
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel, QWidget
+from qfluentwidgets import InfoBar, InfoBarPosition
+
 
 class Utils:
     # --- 信息栏辅助函数 ---
     @staticmethod
-    def show_success_infobar(self : QWidget, title: str, content: str,duration=2000):
+    def show_success_infobar(self: QWidget, title: str, content: str, duration=2000):
         parent = self.window() if self.window() else self
         InfoBar.success(
             title=title,
             content=content,
             isClosable=True,
             position=InfoBarPosition.BOTTOM_RIGHT,
-            orient=Qt.Orientation.Vertical,    # vertical layout
+            orient=Qt.Orientation.Vertical,  # vertical layout
             duration=duration,
-            parent=parent
+            parent=parent,
         ).show()
 
     @staticmethod
-    def show_error_infobar(self : QWidget, title: str, content: str,duration=2000):
+    def show_error_infobar(self: QWidget, title: str, content: str, duration=2000):
         parent = self.window() if self.window() else self
         InfoBar.error(
             title=title,
             content=content,
             isClosable=True,
             position=InfoBarPosition.BOTTOM_RIGHT,
-            orient=Qt.Orientation.Vertical,    # vertical layout
+            orient=Qt.Orientation.Vertical,  # vertical layout
             duration=duration,
-            parent=parent
+            parent=parent,
         ).show()
 
     @staticmethod
-    def show_warning_infobar(self : QWidget, title: str, content: str,duration=2000):
+    def show_warning_infobar(self: QWidget, title: str, content: str, duration=2000):
         parent = self.window() if self.window() else self
         InfoBar.warning(
             title=title,
             content=content,
             isClosable=True,
             position=InfoBarPosition.BOTTOM_RIGHT,
-            orient=Qt.Orientation.Vertical,    # vertical layout
+            orient=Qt.Orientation.Vertical,  # vertical layout
             duration=duration,
-            parent=parent
+            parent=parent,
         ).show()
 
     @staticmethod
-    def show_info_infobar(self : QWidget, title: str, content: str,duration=2000):
+    def show_info_infobar(self: QWidget, title: str, content: str, duration=2000):
         parent = self.window() if self.window() else self
         InfoBar.info(
             title=title,
             content=content,
             isClosable=True,
             position=InfoBarPosition.BOTTOM_RIGHT,
-            orient=Qt.Orientation.Vertical,    # vertical layout
+            orient=Qt.Orientation.Vertical,  # vertical layout
             duration=duration,
-            parent=parent
+            parent=parent,
         ).show()
 
     @staticmethod
@@ -75,52 +71,71 @@ class Utils:
         # 首尾各保留一半长度（预留3个字符给...）
         half = (max_len - 3) // 2
         return f"{text[:half]}...{text[-half:]}"
-    
+
     @staticmethod
     def isWin11():
-        return sys.platform == 'win32' and sys.getwindowsversion().build >= 22000
-    
+        return sys.platform == "win32" and sys.getwindowsversion().build >= 22000
+
     @staticmethod
     def user_path(relative_path):
         """
         获取用户文件
         """
         app_name, _, author_name = Utils.get_app_info()
-        if hasattr(sys, '_MEIPASS'):
+        if hasattr(sys, "_MEIPASS"):
             # PyInstaller 打包后的路径
             data_dir = Path(platformdirs.user_data_dir(app_name, author_name))
         else:
             current_script_path = Path(__file__).resolve()
             data_dir = Path.joinpath(current_script_path.parent.parent.parent, "user")
-        data_dir.mkdir(parents=True,exist_ok=True)
+        data_dir.mkdir(parents=True, exist_ok=True)
         return Path.joinpath(data_dir, relative_path)
 
     @staticmethod
-    def app_path(relative_path):
+    def app_root_path(relative_path=""):
+        """
+        获取程序的【安装根目录】（即 exe 所在的文件夹）。
+        用于寻找 updater.exe、配置文件等放在外部的文件。
+        """
+        if getattr(sys, "frozen", False):
+            # 【打包环境】
+            base_path = Path(sys.executable).parent
+        else:
+            # 【开发环境】
+            base_path = Path(__file__).resolve().parent.parent.parent
+
+        return Path(base_path).joinpath(relative_path)
+
+    @staticmethod
+    def resource_path(relative_path):
         """
         获取app的绝对路径，无论是在开发环境还是在 PyInstaller 打包后。
         """
-        if hasattr(sys, '_MEIPASS'):
+        if hasattr(sys, "_MEIPASS"):
             # PyInstaller 打包后的路径
             # sys._MEIPASS 是 PyInstaller 在运行时创建的临时文件夹
             base_path = Path(sys._MEIPASS)
         else:
-        # 1. 获取当前脚本（main.py）的绝对路径
+            # 1. 获取当前脚本（main.py）的绝对路径
             current_script_path = Path(__file__).resolve()  # resolve() 确保是绝对路径
             base_path = current_script_path.parent.parent.parent
         return Path.joinpath(base_path, relative_path)
-    
+
     @staticmethod
     def right_elide_label(label: QLabel) -> None:
         ori_text = label.text()
-        wrap_text = label.fontMetrics().elidedText(ori_text,Qt.TextElideMode.ElideRight,label.width())
+        wrap_text = label.fontMetrics().elidedText(
+            ori_text, Qt.TextElideMode.ElideRight, label.width()
+        )
         label.setText(wrap_text)
-        label.setProperty("ori_text",ori_text)
+        label.setProperty("ori_text", ori_text)
 
     @staticmethod
     def elide_label_handle_resize(label: QLabel) -> None:
         ori_text = label.property("ori_text")
-        wrap_text = label.fontMetrics().elidedText(ori_text,Qt.TextElideMode.ElideRight,label.width())
+        wrap_text = label.fontMetrics().elidedText(
+            ori_text, Qt.TextElideMode.ElideRight, label.width()
+        )
         label.setText(wrap_text)
 
     @staticmethod
@@ -134,37 +149,39 @@ class Utils:
         name = path.name
         if not name:
             return ""
-        
+
         first_char = name[0]
-        
+
         # 检查是否为中文字符 (基本范围)
-        if '\u4e00' <= first_char <= '\u9fff':
+        if "\u4e00" <= first_char <= "\u9fff":
             try:
                 # 获取拼音
                 pinyin_list = pinyin(first_char, style=Style.FIRST_LETTER)
                 if pinyin_list:
                     return pinyin_list[0][0].lower()
                 else:
-                    return first_char.lower() # 罕见情况回退
+                    return first_char.lower()  # 罕见情况回退
             except Exception:
-                return first_char.lower() # 异常时回退
+                return first_char.lower()  # 异常时回退
         else:
             # 非中文，直接用首字母小写
             return first_char.lower()
-        
+
     @staticmethod
-    def sort_path_list_by_name(paths : list[Path]) -> list[Path]:
+    def sort_path_list_by_name(paths: list[Path]) -> list[Path]:
         return sorted(paths, key=Utils._get_path_sort_key)
-    
+
     @staticmethod
     def get_app_info():
         try:
-            with open(Utils.app_path("resources/app_info.json"), encoding="utf-8") as f:
+            with open(
+                Utils.resource_path("resources/app_info.json"), encoding="utf-8"
+            ) as f:
                 app_info = json.load(f)
         except:
             app_info = {}
-        app_info = app_info if isinstance(app_info,dict) else {}
+        app_info = app_info if isinstance(app_info, dict) else {}
         version = app_info.get("version", "1.0.0")
-        author = app_info.get("author","fanfanffy163")
-        app_name = app_info.get("app_name","midi-player")
-        return app_name,version,author
+        author = app_info.get("author", "fanfanffy163")
+        app_name = app_info.get("app_name", "midi-player")
+        return app_name, version, author
