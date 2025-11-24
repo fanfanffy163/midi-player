@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
-                "MidiPlayer.spec",
+                "app.spec",
                 "--noconfirm"
             ],
             "options": {
