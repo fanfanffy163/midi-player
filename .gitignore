@@ -218,6 +218,7 @@ __marimo__/
 # personal
 beeware-venv
 logs
+*.iss
 requirements-old.txt
 *.dist-info/
 /src/midiplayer/midi_index_whoosh

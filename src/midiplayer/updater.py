@@ -1,5 +1,6 @@
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,11 @@ def install_and_restart(zip_path, install_dir, main_exe, wait_pid):
                 return
 
             try:
+                # 删除_internal的下的所有内容
+                _internal_dir = os.path.join(install_dir, "_internal")
+                if os.path.exists(_internal_dir):
+                    shutil.rmtree(_internal_dir)
+
                 with zipfile.ZipFile(zip_path, "r") as z:
                     z.extractall(install_dir)
             except Exception as e:

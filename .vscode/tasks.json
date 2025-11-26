@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "app exe",
+            "label": "build app exe",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
@@ -14,7 +14,7 @@
             }
         },
         {
-            "label": "updater exe",
+            "label": "build updater exe",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
@@ -26,27 +26,50 @@
             }
         },
         {
-            "label": "package update zip",
+            "label": "build package update zip",
             "type": "shell",
-            "windows": {
-                "command": "& 'C:\\Program Files\\7-Zip\\7z.exe' a -tzip '${workspaceFolder}\\src\\midiplayer\\dist\\midiplayer-updater-package.zip' '${workspaceFolder}\\src\\midiplayer\\dist\\midiplayer\\*'"
-            },
-            "problemMatcher": [
-                "$python"
+            "command": "C:\\Program Files\\7-Zip\\7z.exe",
+            "args": [
+                "a",
+                "-tzip",
+                "${workspaceFolder}\\src\\midiplayer\\dist\\midi-player-v${input:getAppVersion}-updater-package.zip",
+                "${workspaceFolder}\\src\\midiplayer\\dist\\midiplayer\\*",
+            ],
+        },
+        {
+            "label": "build installer",
+            "type": "process",
+            "command": "E:\\Inno Setup 6\\ISCC.exe",
+            "args": [
+                "/DMyAppVersion=${input:getAppVersion}",
+                "/DOutputDir=${workspaceFolder}\\src\\midiplayer\\dist",
+                "${workspaceFolder}\\src\\midiplayer\\i.iss"
             ]
         },
         {
             "label": "app with updater exe",
             "dependsOn": [
-                "updater exe",
-                "app exe",
-                "package update zip"
+                "build updater exe",
+                "build app exe",
+                "build package update zip",
+                "build installer"
             ],
             "dependsOrder": "sequence",
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
+        }
+    ],
+    "inputs": [
+        {
+          "id": "getAppVersion",
+          "type": "command",
+          "command": "extension.commandvariable.file.content",
+          "args": {
+            "fileName": "${workspaceFolder}/src/midiplayer/resources/app_info.json",
+            "json": "content.version"
+          }
         }
     ]
 }
