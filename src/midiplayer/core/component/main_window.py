@@ -15,12 +15,13 @@ from PySide6.QtWidgets import QApplication
 from qfluentwidgets import FluentIcon, FluentWindow, MessageBox, NavigationItemPosition
 
 from midiplayer.core.component.common.update_info_dialog import UpdateProgressDialog
+from midiplayer.core.component.pages.omr_page import OMRInterface
 from midiplayer.core.utils.utils import Utils
 
 from ..component.pages.editor_page import EditorPage
 from ..component.pages.music_play_page import MusicPlayPage
 from ..component.pages.setting_page import SettingPage
-from ..utils.note_key_binding_db_manger import NoteKeyBindingDBManager
+from ..utils.note_key_binding_db_manger import DBManager
 from .pages.present_page import PresentPage
 
 
@@ -136,12 +137,13 @@ class MainWindow(FluentWindow):
         self.current_preset_name: Optional[str] = None
 
         # 1. 初始化数据库管理器
-        self.db = NoteKeyBindingDBManager()
+        self.db = DBManager()
 
         # 2. 初始化UI页面
         self.editor_page = EditorPage(self.db, self)
         self.present_page = PresentPage(self.db, self)
         self.music_play_page = MusicPlayPage(self.db, self)
+        self.omr_page = OMRInterface(self)
         self.setting_page = SettingPage(self)
         self.editor_page.signal_save_preset.connect(self.on_preset_changed)
         self.present_page.signal_load_present.connect(self.on_load_preset)
@@ -151,6 +153,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.editor_page, FluentIcon.EDIT, "按键编辑器")
         self.addSubInterface(self.present_page, FluentIcon.BOOK_SHELF, "按键预设管理")
         self.addSubInterface(self.music_play_page, FluentIcon.MUSIC, "Midi播放")
+        self.addSubInterface(self.omr_page, FluentIcon.CONSTRACT, "乐谱转Midi")
 
         self.navigationInterface.addItem(
             routeKey="update",

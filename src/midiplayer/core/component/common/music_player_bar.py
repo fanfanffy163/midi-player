@@ -10,11 +10,17 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLayout, QSizePolicy, QVBoxLa
 from qfluentwidgets import (
     BodyLabel,
     FluentIcon,
+    Flyout,
+    FlyoutAnimationType,
+    FlyoutView,
     PushButton,
     Slider,
     StrongBodyLabel,
     TransparentToolButton,
 )
+
+from midiplayer.core.component.common.trace_select_view import TrackContentView
+from midiplayer.core.utils.note_key_binding_db_manger import DBManager
 
 from ...player.midi_player import QMidiPlayer
 from ...player.type import SONG_CHANGE_ACTIONS, MdPlaybackParam
@@ -31,14 +37,16 @@ class MusicPlayerBar(QFrame):
     使用手动列表管理 (替代 QMediaPlaylist) 的 Qt 6 播放器 Bar
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, db: DBManager = None):
         super().__init__(parent)
         self.current_playback_rate = 1.0
+        self.db = db
 
         # --- 1. 手动播放列表 ---
         self.loop_mode = "ListLoop"
+        self.user_action_stop = None
         self._on_play_mode_change(cfg.get(cfg.player_play_single_loop))
-        self.last_song: None | dict = None
+        self.current_song: None | dict = None
         pydirectinput.PAUSE = cfg.get(cfg.player_play_press_delay) / 1000
 
         # --- 2. 初始化midi播放器 ---
@@ -100,9 +108,9 @@ class MusicPlayerBar(QFrame):
             if name == self.trigger_play_shortcut:
                 self.toggle_play_pause()
             elif name == self.start_play_shortcut:
-                self.play_current_song()
+                self.toggle_play()
             elif name == self.pause_play_shortcut:
-                self.pause_current_song()
+                self.toggle_pause()
             elif name == self.play_next_shortcut:
                 self.next_song()
             elif name == self.play_pre_shortcut:
@@ -144,6 +152,14 @@ class MusicPlayerBar(QFrame):
         self.rate_label = BodyLabel("x1.0")
         self.rate_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # --- 新增：音轨选择按钮 ---
+        # 放在速度控制旁边，或者控制栏右侧
+        self.track_select_button = TransparentToolButton(
+            FluentIcon.MUSIC_FOLDER
+        )  # 或者选一个像图层的图标
+        self.track_select_button.setToolTip("选择音轨")
+        self.track_select_button.clicked.connect(self.show_track_selection_flyout)
+
         # --- 布局 ---
         main_layout = QHBoxLayout(self)
         header_layout = QVBoxLayout()
@@ -170,6 +186,9 @@ class MusicPlayerBar(QFrame):
         speed_layout.addWidget(self.slow_down_button)
         speed_layout.addWidget(self.rate_label)
         speed_layout.addWidget(self.speed_up_button)
+        # 新增
+        speed_layout.addSpacing(10)
+        speed_layout.addWidget(self.track_select_button)
         main_layout.addLayout(speed_layout, 2)
 
         self.correct_info_label.setObjectName("CorrectInfoLabel")
@@ -177,7 +196,7 @@ class MusicPlayerBar(QFrame):
     def connect_signals(self):
         # --- 按钮点击 ---
         self.play_pause_button.clicked.connect(self.toggle_play_pause)
-        self.stop_button.clicked.connect(self.stop_current_song)
+        self.stop_button.clicked.connect(self.toggle_stop)
         self.prev_button.clicked.connect(self.previous_song)
         self.next_button.clicked.connect(self.next_song)
 
@@ -204,6 +223,100 @@ class MusicPlayerBar(QFrame):
         # -- 变换播放模式信号 --
         cfg.player_play_single_loop.valueChanged.connect(self._on_play_mode_change)
 
+    # --- 核心逻辑：显示弹窗 ---
+    def show_track_selection_flyout(self):
+        if not self.current_song:
+            return
+
+        current_path = self.current_song["path"]
+
+        # 1. 获取后端音轨信息
+        # 格式示例: [{"index": 0, "name": "Piano"}, {"index": 1, "name": "Bass"}]
+        track_info_list = self._get_track_details()
+
+        # 2. 获取当前配置
+        active_tracks = self.db.get_active_tracks(current_path)
+        if active_tracks is None:
+            # 默认全部激活
+            active_tracks = [t["index"] for t in track_info_list]
+
+        # 3. 创建并显示 Flyout
+        view = TrackContentView(track_info_list, active_tracks)
+        view.signal_track_state_changed.connect(self._on_track_toggled)
+
+        # 使用 FluentWidgets 的 Flyout
+        Flyout.make(
+            view,
+            self.track_select_button,
+            self.window(),
+            aniType=FlyoutAnimationType.PULL_UP,
+        )
+
+    def _get_track_details(self):
+        return self.player.get_all_tracks()
+
+    def _get_total_tracks_idx(self):
+        return [x["index"] for x in self.player.get_all_tracks()]
+
+    def _on_track_toggled(self, track_index, is_checked):
+        if not self.current_song:
+            return
+
+        total_track_idx = None
+        current_path = self.current_song["path"]
+        last_active_tracks = self.current_song["tracks"]
+        if last_active_tracks is None:
+            last_active_tracks = self._get_total_tracks_idx()
+
+        # 更新 active list
+        active_list = self._get_tracks_by_path(current_path)
+        if active_list is None:
+            active_list = (
+                self._get_total_tracks_idx()
+                if total_track_idx is None
+                else total_track_idx
+            )
+
+        if is_checked:
+            if track_index not in active_list:
+                active_list.append(track_index)
+        else:
+            if track_index in active_list:
+                active_list.remove(track_index)
+
+        active_list.sort()
+        if set(last_active_tracks) == set(active_list):
+            return
+
+        # 处理播放
+        self._handle_cfg_changed(new_active_tracks=active_list)
+        # 保存到磁盘
+        self.db.save_active_tracks(current_path, active_list)
+
+    # 处理预设配置变化/轨道信息变化
+    def _handle_cfg_changed(self, new_note_to_key_cfg=None, new_active_tracks=None):
+        # 先停止当前歌曲
+        if self.current_song:
+            tmp_playing = (
+                self.player.get_playback_state() == QMidiPlayer.PlayState.PLAYING
+            )
+            self.prepare_song(
+                name=self.current_song["name"],
+                path=self.current_song["path"],
+                note_to_key_cfg=(
+                    new_note_to_key_cfg
+                    if new_note_to_key_cfg is not None
+                    else self.current_song["note_to_key_cfg"]
+                ),
+                tracks=(
+                    new_active_tracks
+                    if new_active_tracks is not None
+                    else self.current_song["tracks"]
+                ),
+            )
+            if tmp_playing:
+                self.play_current_song()
+
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         Utils.elide_label_handle_resize(self.correct_info_label)
@@ -211,9 +324,9 @@ class MusicPlayerBar(QFrame):
 
     def _on_correct_info_change(self, correct_info_label, octave_change):
         text = (
-            f"提高{abs(octave_change)}个八度"
+            f"提高{abs(octave_change)}个调"
             if octave_change > 0
-            else f"降低{abs(octave_change)}个八度" if octave_change < 0 else ""
+            else f"降低{abs(octave_change)}个调" if octave_change < 0 else ""
         )
         correct_info = f"命中率:{correct_info_label*100 : .2f}% {text}"
         self.correct_info_label.setText(correct_info)
@@ -230,24 +343,21 @@ class MusicPlayerBar(QFrame):
         self.keyboard_listener.stop()
 
     # --- 核心播放逻辑 ---
-    def prepare_song(self, name: str, path: str, note_to_key_cfg: dict):
+    def prepare_song(self, name: str, path: str, note_to_key_cfg: dict, tracks):
         # 设置媒体源并播放
-        self.last_song = {
+        self.current_song = {
             "name": name,
             "path": path,
             "note_to_key_cfg": note_to_key_cfg,
+            "tracks": tracks,
         }
         self.player.prepare(
             md_playback_param=MdPlaybackParam(
-                midiPath=path, noteToKeyMapping=note_to_key_cfg
+                midiPath=path, noteToKeyMapping=note_to_key_cfg, active_tracks=tracks
             )
         )
         self.song_info_label.setText(name)
         Utils.right_elide_label(self.song_info_label)
-
-    def play_current_song(self):
-        if self.last_song:
-            self.player.play()
 
     def next_song(self):
         self.signal_change_song_action.emit(SONG_CHANGE_ACTIONS.NEXT_SONG)  # 列表循环
@@ -257,19 +367,59 @@ class MusicPlayerBar(QFrame):
             SONG_CHANGE_ACTIONS.PREVIOUS_SONG
         )  # 列表循环
 
+    # 用户手动触发的播放、停止、暂停，携带一下用户信号，用于决定后续切换歌时的行为
+    # ---------------------------------
+    def toggle_stop(self):
+        self.stop_current_song()
+        self.user_action_stop = True
+
+    def toggle_play(self):
+        self.play_current_song()
+        self.user_action_stop = False
+
+    def toggle_pause(self):
+        self.pause_current_song()
+        self.user_action_stop = True
+
+    def toggle_play_pause(self):
+        if self.player.get_playback_state() == QMidiPlayer.PlayState.PLAYING:
+            self.pause_current_song()
+            self.user_action_stop = True
+        else:
+            self.play_current_song()
+            self.user_action_stop = False
+
+    # ---------------------------------
+    # 用户主动触发结束
+
+    def play_current_song(self):
+        if self.current_song:
+            self.player.play()
+
     def stop_current_song(self):
         self.player.stop()
         self.update_slider_position(0)
 
     def pause_current_song(self):
-        if self.last_song:
+        if self.current_song:
             self.player.pause()
 
-    def toggle_play_pause(self):
-        if self.player.get_playback_state() == QMidiPlayer.PlayState.PLAYING:
-            self.pause_current_song()
-        else:
+    def _get_tracks_by_path(self, path):
+        return self.db.get_active_tracks(path)
+
+    def on_external_song_change(self, name, path, note_to_key_cfg):
+        tracks = self._get_tracks_by_path(path)
+        self.prepare_song(
+            name=name, path=path, note_to_key_cfg=note_to_key_cfg, tracks=tracks
+        )
+        # 根据之前歌是否被用户停止，决定切换后歌的行为
+        if not self.user_action_stop:
             self.play_current_song()
+        else:
+            self.stop_current_song()
+
+    def on_note_to_key_cfg_change(self, new_note_to_key_cfg):
+        self._handle_cfg_changed(new_note_to_key_cfg=new_note_to_key_cfg)
 
     def on_media_status_changed(self, done):
         """关键槽函数：处理歌曲自动播放完毕"""
@@ -278,7 +428,7 @@ class MusicPlayerBar(QFrame):
                 # 单曲循环
                 self.play_current_song()
             else:
-                # 触发下一曲 (ListLoop 或 NoLoop 逻辑在 next_song 中处理)
+                # 触发下一曲
                 self.next_song()
 
     def update_play_button_icon(self, state):

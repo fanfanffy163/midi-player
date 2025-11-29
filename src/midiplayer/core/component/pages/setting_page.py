@@ -67,16 +67,10 @@ class SettingPage(ScrollArea):
             cfg.player_play_single_loop,
             self.appGroup,
         )
-        self.singleTraceCard = SwitchSettingCard(
-            FIF.TRAIN,
-            "单轨播放",
-            "只选取主音轨进行播放(已播放歌曲重新播放后生效)",
-            cfg.player_play_single_track,
-            self.appGroup,
-        )
+
         self.midiFolderCard = PushSettingCard(
             "选择文件夹",
-            FIF.FOLDER,
+            FIF.MUSIC_FOLDER,
             "MIDI文件路径，可以是多个midi目录的根路径",
             cfg.get(cfg.midi_folder),
             self.appGroup,
@@ -143,7 +137,6 @@ class SettingPage(ScrollArea):
             [
                 self.shortcutsSettingCard,
                 self.singleLoopCard,
-                self.singleTraceCard,
                 self.midiFolderCard,
                 self.playDelayCard,
                 self.pressDelayCard,

@@ -31,6 +31,8 @@ class QMidiPlayer(QtCore.QObject):
 
         # config
         self.midi = None
+        self.music_track_index = None
+        self.control_track_index = None
         self.note_to_key = {}
 
         self.task_queue = queue.Queue()
@@ -66,13 +68,11 @@ class QMidiPlayer(QtCore.QObject):
 
         # 引入混合调度阈值
 
-        # 自旋等待阈值（微秒）：当距下个事件小于此值，线程自旋以保证最高精度
-        # 5000us = 5ms
-        self.SPIN_WAIT_THRESHOLD_US = 5000
+        # 自旋等待阈值（纳秒）：当距下个事件小于此值，线程自旋以保证最高精度
+        self.SPIN_WAIT_THRESHOLD_NS = 5000
 
-        # 响应式轮询时间（毫秒）：当距下个事件较远时，以此间隔苏醒以检查UI响应
-        # 5ms
-        self.RESPONSIVE_LOOP_TIME_MS = 5
+        # 响应式轮询时间（纳秒）：当距下个事件较远时，以此间隔苏醒以检查UI响应
+        self.RESPONSIVE_LOOP_TIME_NS = 5000
 
         self.position_timer = QtCore.QTimer(self)
         self.position_timer.setInterval(1000)  # 1000ms = 1s
@@ -84,68 +84,45 @@ class QMidiPlayer(QtCore.QObject):
             pos_ms = int(self.current_playback_time_us // 1000)
         self.signal_play_position.emit(pos_ms)
 
-    def _find_main_track(self, mid: mido.MidiFile):
+    def _split_control_and_music_track(self):
         """
-        查找 MIDI 文件中最可能的主音轨
-        返回：(主音轨索引, 主音轨对象)
+        分离控制和实际演奏音符的index
         """
-        track_info = []  # 存储每个音轨的信息：(索引, 音符数量, 是否为打击乐轨)
+        music_track_index = []
         control_track_index = []
 
-        for i, track in enumerate(mid.tracks):
-            note_count = 0  # 统计音符事件数量
-            is_drum_track = False  # 是否为打击乐轨（通道 9）
-
+        for i, track in enumerate(self.midi.tracks):
             control_track = True
             for msg in track:
-                # 检查是否为音符事件（note_on 且 velocity > 0，避免静音音符）
-                if msg.type == "note_on" and msg.velocity > 0:
-                    note_count += 1
-                    # 检查是否在打击乐通道（channel=9）
-                    if msg.channel == 9:
-                        is_drum_track = True
-
                 if msg.type == "note_on" or msg.type == "note_off":
                     control_track = False
+                    break
 
             if control_track:
                 control_track_index.append(i)
+            else:
+                music_track_index.append(i)
 
-            track_info.append(
-                {
-                    "index": i,
-                    "track": track,
-                    "note_count": note_count,
-                    "is_drum": is_drum_track,
-                }
-            )
+        self.music_track_index = music_track_index
+        self.control_track_index = control_track_index
 
-        # 筛选逻辑：排除打击乐轨，优先选择音符数量最多的音轨
-        candidate_tracks = [t for t in track_info if not t["is_drum"]]
-        if not candidate_tracks:
-            # 如果没有非打击乐轨，退而求其次选音符最多的（可能是鼓组主导的音乐）
-            candidate_tracks = track_info
-
-        # 按音符数量降序排序，取第一个作为主音轨
-        candidate_tracks.sort(key=lambda x: x["note_count"], reverse=True)
-        main_track = candidate_tracks[0]
-        if not main_track:
-            return []
-
-        res = []
-        for x in control_track_index:
-            res.append(mid.tracks[x])
-        res.append(main_track["track"])
-        return res
+    def get_all_tracks(self):
+        track_info = []
+        with self.clock_lock:
+            if self.midi:
+                for i, track_idx in enumerate(self.music_track_index):
+                    track = self.midi.tracks[track_idx]
+                    track_info.append({"index": i, "name": track.name})
+        return track_info
 
     def prepare(self, md_playback_param: MdPlaybackParam):
         self.stop()
 
-        player_play_single_track = cfg.get(cfg.player_play_single_track)
         with self.clock_lock:
             self.note_to_key = md_playback_param.note_to_key_mapping
 
             self.midi = mido.MidiFile(md_playback_param.midi_path)
+            self._split_control_and_music_track()
             self.ticks_per_beat = self.midi.ticks_per_beat
 
             raw_events = []  # (tick, type, note)
@@ -155,8 +132,12 @@ class QMidiPlayer(QtCore.QObject):
             initial_tempo = 500000
 
             tracks = (
-                self._find_main_track(self.midi)
-                if player_play_single_track
+                [self.midi.tracks[t] for t in self.control_track_index]
+                + [
+                    self.midi.tracks[self.music_track_index[t]]
+                    for t in md_playback_param.active_tracks
+                ]
+                if md_playback_param.active_tracks is not None
                 else self.midi.tracks
             )
             self.note_to_key, correct_radio_1base, octave_change = NoteFitting(
@@ -217,8 +198,7 @@ class QMidiPlayer(QtCore.QObject):
 
             self.events = final_events_with_micros
             self.total_events = len(self.events)
-            if self.total_events > 0:
-                self.total_duration_us = self.events[-1][0]  # 最后一个事件的时间戳
+            self.total_duration_us = self.midi.length * 1_000_000
 
             logger.debug(
                 f"预处理完毕，总事件数: {self.total_events}，总时长: {self.total_duration_us / 1000:.2f} ms"
@@ -351,7 +331,10 @@ class QMidiPlayer(QtCore.QObject):
                             break
 
                     # --- 计算下一次等待策略 ---
-                    if self.event_index >= self.total_events:
+                    if (
+                        self.event_index >= self.total_events
+                        and self.current_playback_time_us > self.total_duration_us
+                    ):
                         # 播放完毕
                         logger.debug("播放完毕。")
                         self.state = QMidiPlayer.PlayState.IDLE
@@ -363,16 +346,23 @@ class QMidiPlayer(QtCore.QObject):
                         wait_timeout_sec = None  # 进入无限等待
                     else:
                         # 计算到下一个事件的“真实”微秒
-                        next_event_time_us = self.events[self.event_index][0]
-                        wait_micros = (
-                            next_event_time_us - self.current_playback_time_us
-                        ) / self.playback_speed
+                        if self.event_index < self.total_events:
+                            next_event_time_us = self.events[self.event_index][0]
+                            wait_micros = (
+                                next_event_time_us - self.current_playback_time_us
+                            ) / self.playback_speed
+                        else:
+                            # 此时在静默播放，已经没有任务了. 让他不要自旋就行
+                            wait_micros = max(
+                                self.RESPONSIVE_LOOP_TIME_NS,
+                                self.SPIN_WAIT_THRESHOLD_NS + 1,
+                            )
 
                         if wait_micros <= 1:  # (<= 1us 视为立即执行)
                             # 已经迟了或即将到时，不睡眠，立即循环
                             wait_timeout_sec = 0
 
-                        elif wait_micros <= self.SPIN_WAIT_THRESHOLD_US:
+                        elif wait_micros <= self.SPIN_WAIT_THRESHOLD_NS:
                             # 【精度模式】
                             # 时间极短，准备自旋
                             spin_wait = True
@@ -384,7 +374,7 @@ class QMidiPlayer(QtCore.QObject):
                         else:
                             # 【响应模式】
                             # 时间较长，计算一个安全的、可响应的睡眠时间
-                            responsive_wait_us = self.RESPONSIVE_LOOP_TIME_MS * 1000
+                            responsive_wait_us = self.RESPONSIVE_LOOP_TIME_NS * 1000
 
                             # 睡眠时间 = min(到下个音符的时间, 5ms的响应时间)
                             sleep_micros = min(wait_micros, responsive_wait_us)
@@ -435,39 +425,6 @@ class QMidiPlayer(QtCore.QObject):
         # 启动调度线程
         self.scheduler_thread = threading.Thread(target=self._scheduler_thread)
         self.scheduler_thread.start()
-
-    def stop(self):
-        # 1. 先锁时钟，改变状态
-        with self.clock_lock:
-            if self.state == QMidiPlayer.PlayState.IDLE:
-                return
-            logger.debug("正在停止播放...")
-            self.state = QMidiPlayer.PlayState.IDLE
-            self.signal_state.emit(self.state)
-            self.event_index = 0
-            self.current_playback_time_us = 0
-            self.last_real_time_ns = 0
-
-        # 2. 清空队列 (在锁外)
-        while not self.task_queue.empty():
-            try:
-                self.task_queue.get_nowait()
-            except queue.Empty:
-                break
-            self.task_queue.task_done()
-
-        # 3. 锁按键状态，准备释放
-        with self.keys_lock:
-            keys_to_release = list(self.pressed_keys)
-            # 注意：这里不清空pressed_keys，让executor来清
-
-        # 4. 提交释放任务 (在锁外)
-        for key_str in keys_to_release:
-            self.task_queue.put(("note_off", [key_str]))  # 修复：传列表
-
-        self.signal_play_position.emit(0)
-        self.position_timer.stop()
-        self.wake_up_event.set()  # 唤醒调度器
 
     def stop_player(self):
         with self.clock_lock:
@@ -526,9 +483,31 @@ class QMidiPlayer(QtCore.QObject):
             self.state = QMidiPlayer.PlayState.PAUSED
             self.signal_state.emit(self.state)
 
+        # 释放队列按键以及按下的按键
+        self._release_keyup_all_task_and_pressed_keys()
+
         # 唤醒调度器，让它进入 'paused' 的等待状态
         self.position_timer.stop()
         self.wake_up_event.set()
+
+    def stop(self):
+        # 1. 先锁时钟，改变状态
+        with self.clock_lock:
+            if self.state == QMidiPlayer.PlayState.IDLE:
+                return
+            logger.debug("正在停止播放...")
+            self.state = QMidiPlayer.PlayState.IDLE
+            self.signal_state.emit(self.state)
+            self.event_index = 0
+            self.current_playback_time_us = 0
+            self.last_real_time_ns = 0
+
+        # 2. 释放队列按键以及按下的按键
+        self._release_keyup_all_task_and_pressed_keys()
+
+        self.signal_play_position.emit(0)
+        self.position_timer.stop()
+        self.wake_up_event.set()  # 唤醒调度器
 
     def seek(self, time_ms: int):
         """跳转到指定毫秒。"""
@@ -548,24 +527,10 @@ class QMidiPlayer(QtCore.QObject):
             self.current_playback_time_us = time_us
             self.event_index = self._find_event_index_for_time(time_us)
 
-        # 2. 清空队列 (在锁外)
-        while not self.task_queue.empty():
-            try:
-                self.task_queue.get_nowait()
-            except queue.Empty:
-                break
-            self.task_queue.task_done()
+        # 2. 释放队列按键以及按下的按键
+        self._release_keyup_all_task_and_pressed_keys()
 
-        # 3. 锁按键状态，准备释放
-        with self.keys_lock:
-            keys_to_release = list(self.pressed_keys)
-            # 注意：这里不清空pressed_keys，让executor来清
-
-        # 4. 提交释放任务 (在锁外)
-        for key_str in keys_to_release:
-            self.task_queue.put(("note_off", [key_str]))  # 修复：传列表
-
-        # 5. 如果之前在播放，则恢复播放
+        # 3. 如果之前在播放，则恢复播放
         if was_playing:
             with self.clock_lock:
                 self.state = QMidiPlayer.PlayState.PLAYING
@@ -574,6 +539,24 @@ class QMidiPlayer(QtCore.QObject):
 
         # 唤醒调度器
         self.wake_up_event.set()
+
+    def _release_keyup_all_task_and_pressed_keys(self):
+        # 清空队列 (在锁外)
+        while not self.task_queue.empty():
+            try:
+                self.task_queue.get_nowait()
+            except queue.Empty:
+                break
+            self.task_queue.task_done()
+
+        # 锁按键状态，准备释放
+        with self.keys_lock:
+            keys_to_release = list(self.pressed_keys)
+            # 注意：这里不清空pressed_keys，让executor来清
+
+        # 提交释放任务 (在锁外)
+        for key_str in keys_to_release:
+            self.task_queue.put(("note_off", [key_str]))  # 修复：传列表
 
     def _find_event_index_for_time(self, time_us: int) -> int:
         """(辅助函数) 使用二分查找快速定位时间戳"""

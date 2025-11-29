@@ -9,10 +9,10 @@ from .utils import Utils
 # --- 数据库管理器 ---
 
 
-class NoteKeyBindingDBManager:
+class DBManager:
     """处理所有SQLite数据库操作"""
 
-    def __init__(self, db_name=str(Utils.user_path("keybindings.db"))):
+    def __init__(self, db_name=str(Utils.user_path("db.db"))):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
         self.create_table()
@@ -26,7 +26,16 @@ class NoteKeyBindingDBManager:
                     name TEXT NOT NULL UNIQUE,
                     mappings TEXT NOT NULL
                 );
-            """
+                """
+            )
+
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS track_settings (
+                    file_path TEXT PRIMARY KEY,
+                    active_tracks TEXT
+                );
+                """
             )
 
     def save_preset(self, name: str, mappings: Dict[str, str]) -> bool:
@@ -85,6 +94,38 @@ class NoteKeyBindingDBManager:
             return False
 
         return self.save_preset(new_name, mappings)
+
+    def get_active_tracks(self, file_path: str) -> list[int] | None:
+        """获取某首歌的激活音轨列表，如果没有记录返回 None"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT active_tracks FROM track_settings WHERE file_path = ?",
+                (file_path,),
+            )
+            row = cursor.fetchone()
+            if row:
+                # 数据库里存的是 "[1, 2, 3]" 这种字符串，取出来转回 list
+                return json.loads(row[0])
+        except Exception as e:
+            logger.error(f"读取音轨配置失败: {e}")
+        return None
+
+    def save_active_tracks(self, file_path: str, tracks: list[int]):
+        """保存或更新音轨配置"""
+        try:
+            tracks_json = json.dumps(tracks)
+            with self.conn:
+                # INSERT OR REPLACE: 如果路径存在就更新，不存在就插入
+                self.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO track_settings (file_path, active_tracks)
+                    VALUES (?, ?)
+                """,
+                    (file_path, tracks_json),
+                )
+        except Exception as e:
+            logger.error(f"保存音轨配置失败: {e}")
 
     def __del__(self):
         self.conn.close()

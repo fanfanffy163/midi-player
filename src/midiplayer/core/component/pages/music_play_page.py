@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
 
-from ...utils.note_key_binding_db_manger import NoteKeyBindingDBManager
+from ...utils.note_key_binding_db_manger import DBManager
 from ...utils.style_sheet import StyleSheet
 from ...utils.utils import Utils
 from ..common.midi_cards import MidiCards
@@ -15,15 +15,14 @@ from ..common.present_list import PresentList
 class MusicPlayPage(QWidget):
     """预设管理页面"""
 
-    def __init__(self, db: NoteKeyBindingDBManager, parent: Optional[QWidget] = None):
+    def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("MusicPlayPage")
         self.db = db
 
         # 播放需要使用的参数
         self.note_to_key_mappings: Dict[str, str] = None
-        self.song_name: str = None
-        self.song_path: Path = None
+        self.present_name: str | None = None
 
         # style
         StyleSheet.MUSIC_PLAY_PAGE.apply(self)
@@ -39,7 +38,7 @@ class MusicPlayPage(QWidget):
         self.main_layout.addLayout(self.top_layout)
 
         # 添加音乐播放器控制栏
-        self.music_player_bar = MusicPlayerBar(self)
+        self.music_player_bar = MusicPlayerBar(self, db)
         self.main_layout.addWidget(self.music_player_bar)
 
         # 连接信号与槽
@@ -62,24 +61,25 @@ class MusicPlayPage(QWidget):
         """处理预设选择事件"""
         if item is not None:
             preset_name = item.text()
-            mappings = self.db.load_preset(preset_name)
-            if mappings is not None:
-                self.note_to_key_mappings = mappings
-            else:
-                Utils.show_warning_infobar(
-                    self, "预设加载失败", f"无法加载预设：{preset_name}"
-                )
+            if not self.present_name or self.present_name != preset_name:
+                mappings = self.db.load_preset(preset_name)
+                if mappings is not None:
+                    self.note_to_key_mappings = mappings
+                    if self.present_name and self.present_name != preset_name:
+                        self.music_player_bar.on_note_to_key_cfg_change(mappings)
+                    self.present_name = preset_name
+                else:
+                    Utils.show_warning_infobar(
+                        self, "预设加载失败", f"无法加载预设：{preset_name}"
+                    )
 
     def on_midi_card_clicked(self, midi_path: Path):
-        self.song_path = midi_path
-        self.song_name = midi_path.name
         if self.note_to_key_mappings is not None:
-            self.music_player_bar.prepare_song(
-                name=self.song_name,
-                path=str(self.song_path),
+            self.music_player_bar.on_external_song_change(
+                name=midi_path.name,
+                path=str(midi_path),
                 note_to_key_cfg=self.note_to_key_mappings,
             )
-            self.music_player_bar.play_current_song()
         else:
             Utils.show_warning_infobar(
                 self, "未选择预设", "请先从左侧列表中选择一个按键预设"

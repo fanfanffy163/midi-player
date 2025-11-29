@@ -4,13 +4,13 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QListWidgetItem, QVBoxLayout, QWidget
 from qfluentwidgets import ListWidget, SearchLineEdit
 
-from ...utils.note_key_binding_db_manger import NoteKeyBindingDBManager
+from ...utils.note_key_binding_db_manger import DBManager
 
 
 class PresentList(QWidget):
     signal_item_selected = Signal(object)
 
-    def __init__(self, db: NoteKeyBindingDBManager, parent=None):
+    def __init__(self, db: DBManager, parent=None):
         super().__init__(parent)
         self.db = db
 

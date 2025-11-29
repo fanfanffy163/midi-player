@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import FluentIcon, MessageBox, PrimaryPushButton, PushButton
 
-from ...utils.note_key_binding_db_manger import NoteKeyBindingDBManager
+from ...utils.note_key_binding_db_manger import DBManager
 from ...utils.utils import Utils
 from ..common.confirm_message_box import ConfirmInputBox
 from ..common.present_list import PresentList
@@ -23,7 +23,7 @@ class PresentPage(QWidget):
 
     """预设管理页面"""
 
-    def __init__(self, db: NoteKeyBindingDBManager, parent: Optional[QWidget] = None):
+    def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("PresetPage")
         self.db = db

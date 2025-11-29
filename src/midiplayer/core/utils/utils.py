@@ -1,8 +1,12 @@
 import json
+import os
+import shlex
 import sys
+import winreg
 from pathlib import Path
 
 import platformdirs
+from loguru import logger
 from pypinyin import Style, pinyin
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QWidget
@@ -185,3 +189,129 @@ class Utils:
         author = app_info.get("author", "fanfanffy163")
         app_name = app_info.get("app_name", "midi-player")
         return app_name, version, author
+
+    @staticmethod
+    def get_install_path_by_name(target_name):
+        """
+        全范围扫描注册表（包含当前用户 HKCU 和 系统 HKLM）寻找软件安装路径。
+
+        :param target_name: 软件名称关键词
+        :return: 安装目录绝对路径 (str) 或 None
+        """
+        target_name_lower = target_name.lower()
+
+        # 定义要扫描的 (根键, 路径) 组合列表
+        # 优先级：先扫当前用户(HKCU)，再扫系统(HKLM)，最后扫兼容层
+        search_scope = [
+            # 1. 当前用户 (HKEY_CURRENT_USER)
+            # 很多选择 "Only for me" 安装的软件都在这里
+            (
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Uninstall",
+            ),
+            # 2. 系统范围 (HKEY_LOCAL_MACHINE) - 64位视图
+            (
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            ),
+            # 3. 系统范围 (HKEY_LOCAL_MACHINE) - 32位视图 (WOW6432Node)
+            (
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            ),
+        ]
+
+        found_path = None
+
+        for root_key, sub_path in search_scope:
+            try:
+                # 打开指定的注册表路径
+                # 关键：OpenKey 的第一个参数是 root_key (HKCU 或 HKLM)
+                key = winreg.OpenKey(root_key, sub_path)
+
+                # 获取子键数量
+                key_count = winreg.QueryInfoKey(key)[0]
+
+                for i in range(key_count):
+                    try:
+                        subkey_name = winreg.EnumKey(key, i)
+                        full_subkey_path = sub_path + "\\" + subkey_name
+
+                        subkey = winreg.OpenKey(root_key, full_subkey_path)
+
+                        try:
+                            # 1. 匹配 DisplayName
+                            display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
+
+                            if target_name_lower in display_name.lower():
+                                # 2. 尝试获取 InstallLocation
+                                # 注意：有些软件（如 Steam 游戏）可能不写 InstallLocation，
+                                # 只写 UninstallString，这种情况比较复杂，暂不处理。
+                                try:
+                                    install_loc, _ = winreg.QueryValueEx(
+                                        subkey, "InstallLocation"
+                                    )
+
+                                    # 清理路径中的引号 (有些安装包会写成 "C:\Path")
+                                    clean_path = install_loc.strip('"').strip()
+
+                                    if clean_path and Path.exists(clean_path):
+                                        found_path = clean_path
+                                        # 打印调试信息，让你知道是在哪里找到的
+                                        hive_name = (
+                                            "HKCU"
+                                            if root_key == winreg.HKEY_CURRENT_USER
+                                            else "HKLM"
+                                        )
+                                        logger.debug(
+                                            f"✅ 在 [{hive_name}] 中命中: {display_name}"
+                                        )
+                                        break
+                                except FileNotFoundError:
+                                    pass  # 没写安装路径
+
+                        except FileNotFoundError:
+                            pass  # 没写显示名称
+                        finally:
+                            winreg.CloseKey(subkey)
+
+                    except Exception:
+                        continue
+
+                winreg.CloseKey(key)
+
+                if found_path:
+                    break  # 找到了就停止所有扫描
+
+            except Exception as e:
+                # 某些键可能不存在（比如干净的系统可能没有 WOW6432Node 里的某些项），忽略错误
+                continue
+
+        return found_path
+
+    @staticmethod
+    def get_audiveris_by_file_omr_ext():
+        try:
+            # 1. 查 .omr 对应什么类型 (ProgID)
+            # 路径: HKCR\.omr
+            key_ext = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, ".omr")
+            prog_id = winreg.QueryValue(key_ext, None)  # 读取默认值
+            winreg.CloseKey(key_ext)
+
+            if prog_id:
+                # 2. 查 ProgID 对应的打开命令
+                # 路径: HKCR\<ProgID>\shell\open\command
+                cmd_path = f"{prog_id}\\shell\\open\\command"
+                key_cmd = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, cmd_path)
+                command_str = winreg.QueryValue(key_cmd, None)
+                winreg.CloseKey(key_cmd)
+
+                # shlex.split 可以正确处理引号，比如 "C:\Program Files\..."
+                parts = shlex.split(command_str)
+                if parts:
+                    exe_path = parts[0]  # 第一个部分通常是 exe 路径
+                    if "Audiveris" in exe_path and os.path.exists(exe_path):
+                        logger.debug(f"✅ 通过文件关联找到: {exe_path}")
+                        return exe_path
+        except Exception as e:
+            logger.debug(f"文件关联搜索未命中: {e}")

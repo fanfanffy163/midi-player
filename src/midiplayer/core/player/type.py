@@ -27,15 +27,19 @@ class MdPlaybackParam:
 
     midi_path: MidiFile
 
+    active_tracks: list[int]
+
     def __init__(
         self,
         midiPath: str,
         misMatchMode: MisMatchMode = MisMatchMode.NoFix,
         noteToKeyMapping: dict = {},
+        active_tracks: list[int] = None,
     ):
         self.midi_path = midiPath
         self.misMatchMode = misMatchMode
         self.note_to_key_mapping = noteToKeyMapping
+        self.active_tracks = active_tracks
 
 
 class MidiNoteBiMap:

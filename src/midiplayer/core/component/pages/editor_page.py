@@ -17,7 +17,7 @@ from qfluentwidgets import (
 )
 
 from ...player.type import QT_KEY_MAP, QT_MODIFIER_KEYS
-from ...utils.note_key_binding_db_manger import NoteKeyBindingDBManager
+from ...utils.note_key_binding_db_manger import DBManager
 from ...utils.style_sheet import StyleSheet
 from ...utils.utils import Utils
 from ..common.confirm_message_box import ConfirmInputBox
@@ -185,7 +185,7 @@ class EditorPage(QWidget):
 
     """按键绑定编辑器页面"""
 
-    def __init__(self, db: NoteKeyBindingDBManager, parent: Optional[QWidget] = None):
+    def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("EditorPage")
         self.binding_widgets: List[KeyBindingWidget] = []

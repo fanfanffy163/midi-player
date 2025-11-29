@@ -7,7 +7,7 @@
             "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
                 "app.spec",
-                "--noconfirm"
+                "--noconfirm",
             ],
             "options": {
                 "cwd": "${workspaceFolder}\\src\\midiplayer"
@@ -19,7 +19,7 @@
             "command": "${workspaceFolder}\\.venv\\Scripts\\pyinstaller.exe",
             "args": [
                 "updater.spec",
-                "--noconfirm"
+                "--noconfirm",
             ],
             "options": {
                 "cwd": "${workspaceFolder}\\src\\midiplayer"

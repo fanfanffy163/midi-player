@@ -4,8 +4,6 @@ from pathlib import Path
 
 import mido
 from loguru import logger
-
-# --- 依赖 ---
 from pypinyin import Style, pinyin
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
@@ -13,14 +11,16 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CardWidget,
+    FluentIcon,
     PrimaryPushButton,
     ScrollArea,
     SearchLineEdit,
     StrongBodyLabel,
     ThemeColor,
+    TransparentToolButton,
 )
 from whoosh import query
-from whoosh.fields import ID, NGRAM, Schema
+from whoosh.fields import ID, NGRAM, TEXT, Schema
 from whoosh.index import create_in, exists_in, open_dir
 from whoosh.qparser import MultifieldParser, OrGroup
 
@@ -122,8 +122,7 @@ class WorkerSignals(QObject):
 SCHEMA = Schema(
     path=ID(stored=True, unique=True),
     name_ngram=NGRAM(minsize=1, maxsize=10, stored=False),
-    pinyin_full_ngram=NGRAM(minsize=2, maxsize=10, stored=False),
-    pinyin_initial_ngram=NGRAM(minsize=1, maxsize=10, stored=False),
+    pinyin_tokens=TEXT(stored=False),
 )
 
 
@@ -153,21 +152,19 @@ class IndexBuilderTask(QRunnable):
 
             total_count = 0
             for path in paths:
-                name = path.name
+                # 去除文件后缀名的影响
+                pure_name = path.stem
                 try:
-                    pinyin_full_list = pinyin(name, style=Style.NORMAL)
-                    pinyin_full = "".join([item[0] for item in pinyin_full_list])
-                    pinyin_initial_list = pinyin(name, style=Style.FIRST_LETTER)
-                    pinyin_initial = "".join([item[0] for item in pinyin_initial_list])
+                    # 1. 拼音处理：将 ['mo', 'li', 'hua'] 用空格连接 -> "mo li hua"
+                    pinyin_full_list = pinyin(pure_name, style=Style.NORMAL)
+                    pinyin_tokens = " ".join([item[0] for item in pinyin_full_list])
                 except Exception:
-                    pinyin_full = ""
-                    pinyin_initial = ""
+                    pinyin_tokens = ""
 
                 writer.add_document(
                     path=str(path),
-                    name_ngram=name.lower(),
-                    pinyin_full_ngram=pinyin_full,
-                    pinyin_initial_ngram=pinyin_initial,
+                    name_ngram=pure_name.lower(),
+                    pinyin_tokens=pinyin_tokens,  # 存入空格分隔的拼音
                 )
                 total_count += 1
 
@@ -219,7 +216,7 @@ class SearchTask(QRunnable):
                 q = query.Every()  # 空搜索 = 匹配所有
             else:
                 parser = MultifieldParser(
-                    ["name_ngram", "pinyin_full_ngram", "pinyin_initial_ngram"],
+                    ["name_ngram", "pinyin_tokens"],
                     schema=ix.schema,
                     group=OrGroup,
                 )
@@ -297,14 +294,23 @@ class MidiCards(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(200)
 
-        # --- 移除: 批量任务收集器 ---
-        # self.batch_collector = {}
-
         # 3. UI
         self.main_layout = QVBoxLayout(self)
 
+        # --- 顶部栏: 搜索框 + 搜索按钮 + 刷新按钮 ---
+        self.top_bar_layout = QHBoxLayout()
         self.search_box = SearchLineEdit(self)
-        self.search_box.setPlaceholderText("搜索 (支持名称, 全拼, 首字母)...")
+        self._update_searchbox(False)
+        # 搜索按钮
+        self.search_btn = PrimaryPushButton("搜索", self)
+        self.search_btn.setIcon(FluentIcon.SEARCH)
+        # 刷新按钮 (透明工具按钮风格)
+        self.refresh_btn = TransparentToolButton(FluentIcon.SYNC, self)
+        self.refresh_btn.setToolTip("刷新文件夹")
+
+        self.top_bar_layout.addWidget(self.search_box)
+        self.top_bar_layout.addWidget(self.search_btn)
+        self.top_bar_layout.addWidget(self.refresh_btn)
 
         self.scroll_area = ScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
@@ -324,7 +330,7 @@ class MidiCards(QWidget):
         self.page_layout.addWidget(self.next_button)
         self.page_layout.addStretch()
 
-        self.main_layout.addWidget(self.search_box)
+        self.main_layout.addLayout(self.top_bar_layout)
         self.main_layout.addWidget(self.scroll_area)
         self.main_layout.addLayout(self.page_layout)
 
@@ -344,6 +350,14 @@ class MidiCards(QWidget):
         }}
         """
 
+    def _update_searchbox(self, is_building):
+        if is_building:
+            txt = "正在构建索引，请稍候..."
+        else:
+            txt = "回车或点击触发搜索 (文件名, 拼音, 首字母)..."
+        self.search_box.setPlaceholderText(txt)
+        self.search_box.setEnabled(not is_building)
+
     @Slot()
     def _update_stylesheet(self, color):
         style = self._generate_stylesheet(color)
@@ -351,8 +365,11 @@ class MidiCards(QWidget):
 
     def connect_signals(self):
         """连接所有信号和槽"""
-        self.search_box.textChanged.connect(self.on_search)
-        self.search_timer.timeout.connect(self._trigger_search)
+        # 搜索
+        self.search_box.returnPressed.connect(self.on_search_triggered)
+        self.search_btn.clicked.connect(self.on_search_triggered)
+        self.refresh_btn.clicked.connect(self.on_refresh_clicked)
+
         self.prev_button.clicked.connect(self.prev_page)
         self.next_button.clicked.connect(self.next_page)
         cfg.midi_folder.valueChanged.connect(self._on_folder_change)
@@ -414,8 +431,7 @@ class MidiCards(QWidget):
         if needs_rebuild:
             logger.debug(f"需要重建索引。原因: {rebuild_reason}")
             self.is_index_ready = False
-            self.search_box.setEnabled(False)
-            self.search_box.setText("正在构建索引，请稍候...")
+            self._update_searchbox(True)
             self.all_midi_paths.clear()
             self.current_filtered_paths.clear()
 
@@ -437,18 +453,30 @@ class MidiCards(QWidget):
 
         logger.debug("索引已就绪。")
         self.is_index_ready = True
-        self.search_box.setEnabled(True)
         self.search_box.setText("")
-        self.search_box.setPlaceholderText("搜索 (支持名称, 全拼, 首字母)...")
+        self._update_searchbox(False)
 
         self._trigger_search(get_all_paths=True)
 
-    def on_search(self, text: str):
-        # (无修改)
+    @Slot()
+    def on_refresh_clicked(self):
+        """用户手动点击刷新，强制重建索引"""
+        current_path = cfg.get(cfg.midi_folder)
+        if current_path and os.path.exists(current_path):
+            logger.info("用户请求刷新索引...")
+            self.load_index_and_directory(current_path, force_rebuild=True)
+
+    @Slot()
+    def on_search_triggered(self):
+        """点击搜索按钮或按回车时触发"""
         if not self.is_index_ready:
             return
+
+        text = self.search_box.text().strip()
         self.current_filter_text = text.lower()
-        self.search_timer.start()
+
+        # 如果文本为空，获取所有；否则执行搜索
+        self._trigger_search(get_all_paths=(not text))
 
     @Slot()
     def _trigger_search(self, get_all_paths: bool = False):
