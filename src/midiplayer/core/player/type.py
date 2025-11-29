@@ -5,41 +5,24 @@ from pynput.keyboard import Key
 from PySide6.QtCore import Qt
 
 
-#
-# 无法匹配音高时的处理方式
-# - 'no-fix'：不进行任何处理，保持原音高播放
-# - 'shift-fix'：将无法匹配的音高上/下移八度
-# - 'nearby-fix'：寻找最接近的可用音高进行匹配
-#
-class MisMatchMode(Enum):
-    NoFix = 1
-    ShiftFix = 2
-    NearbyFix = 3
-
-
 class MdPlaybackParam:
-
-    # 无法匹配音高时的处理方式
-    misMatchMode: MisMatchMode = MisMatchMode.NoFix
 
     # 音符名称到键盘按键的映射表
     note_to_key_mapping: dict
 
     midi_path: MidiFile
 
-    active_tracks: list[int]
+    active_track_idxes: list[int]
 
     def __init__(
         self,
         midiPath: str,
-        misMatchMode: MisMatchMode = MisMatchMode.NoFix,
         noteToKeyMapping: dict = {},
         active_tracks: list[int] = None,
     ):
         self.midi_path = midiPath
-        self.misMatchMode = misMatchMode
         self.note_to_key_mapping = noteToKeyMapping
-        self.active_tracks = active_tracks
+        self.active_track_idxes = active_tracks
 
 
 class MidiNoteBiMap:

@@ -1,27 +1,22 @@
-from typing import Dict, List, Optional, Set
+from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontMetrics, QKeyEvent
 from PySide6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     CaptionLabel,
     FluentIcon,
-    LineEdit,
     PrimaryPushButton,
     PushButton,
     ScrollArea,
-    StrongBodyLabel,
     SubtitleLabel,
     SwitchButton,
-    ToolButton,
 )
 
-from ...player.type import QT_KEY_MAP, QT_MODIFIER_KEYS
-from ...utils.note_key_binding_db_manger import DBManager
-from ...utils.style_sheet import StyleSheet
-from ...utils.utils import Utils
-from ..common.confirm_message_box import ConfirmInputBox
-from ..common.key_binding_widget import KeyBindingWidget
+from midiplayer.core.component.common.confirm_message_box import ConfirmInputBox
+from midiplayer.core.component.common.key_binding_widget import KeyBindingWidget
+from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.utils.style_sheet import StyleSheet
+from midiplayer.core.utils.utils import Utils
 
 # --- 音符常量 ---
 # 用户提供的完整音符列表
@@ -188,7 +183,7 @@ class EditorPage(QWidget):
     def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("EditorPage")
-        self.binding_widgets: List[KeyBindingWidget] = []
+        self.binding_widgets: list[KeyBindingWidget] = []
         # 1. 初始化后端
         self.db = db
         self.current_preset_name: Optional[str] = None
@@ -279,7 +274,7 @@ class EditorPage(QWidget):
                         is_visible
                     )  # 同时隐藏/显示 QFormLayout 的标签
 
-    def get_all_mappings(self) -> Dict[str, str]:
+    def get_all_mappings(self) -> dict[str, str]:
         """获取当前编辑器的所有映射"""
         mappings = {}
         for widget in self.binding_widgets:
@@ -288,7 +283,7 @@ class EditorPage(QWidget):
                 mappings[widget.get_name()] = binding
         return mappings
 
-    def set_all_mappings(self, mappings: Dict[str, list[str]]):
+    def set_all_mappings(self, mappings: dict[str, list[str]]):
         """从字典加载映射到编辑器"""
         for widget in self.binding_widgets:
             note_name = widget.get_name()

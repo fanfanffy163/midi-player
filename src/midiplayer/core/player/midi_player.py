@@ -9,9 +9,14 @@ import pydirectinput
 from loguru import logger
 from PySide6 import QtCore
 
-from ..utils.config import cfg
-from .note_fitting import NoteFitting
-from .type import CONTROL_KEY_MAP, KEY_MAP, MIDI_NOTE_MAP, MdPlaybackParam
+from midiplayer.core.player.note_fitting import NoteFitting
+from midiplayer.core.player.type import (
+    CONTROL_KEY_MAP,
+    KEY_MAP,
+    MIDI_NOTE_MAP,
+    MdPlaybackParam,
+)
+from midiplayer.core.utils.config import cfg
 
 
 class QMidiPlayer(QtCore.QObject):
@@ -34,6 +39,7 @@ class QMidiPlayer(QtCore.QObject):
         self.music_track_index = None
         self.control_track_index = None
         self.note_to_key = {}
+        self.active_track_idx_set = None
 
         self.task_queue = queue.Queue()
         self.events = []  # (绝对微秒, 事件类型, 音符)
@@ -84,82 +90,81 @@ class QMidiPlayer(QtCore.QObject):
             pos_ms = int(self.current_playback_time_us // 1000)
         self.signal_play_position.emit(pos_ms)
 
-    def _split_control_and_music_track(self):
+    def _prepare_track_and_events(self):
         """
-        分离控制和实际演奏音符的index
+        分离控制和实际演奏音符的index，获取所有事件
         """
         music_track_index = []
         control_track_index = []
+        raw_events = []  # (tick, type, note, trackIdx)
+        tempo_events = []  # (tick, tempo)
 
         for i, track in enumerate(self.midi.tracks):
             control_track = True
+            current_tick = 0
+
             for msg in track:
-                if msg.type == "note_on" or msg.type == "note_off":
+                current_tick += msg.time
+                if msg.type in ("note_on", "note_off"):
+                    event_type = (
+                        "note_off"
+                        if (msg.type == "note_on" and msg.velocity == 0)
+                        else msg.type
+                    )
+                    raw_events.append((current_tick, event_type, msg.note, i))
                     control_track = False
-                    break
+                elif msg.type == "set_tempo":
+                    tempo_events.append((current_tick, msg.tempo))
 
             if control_track:
                 control_track_index.append(i)
             else:
                 music_track_index.append(i)
 
+        for track in self.midi.tracks:
+            current_tick = 0
+            for msg in track:
+                current_tick += msg.time
+
         self.music_track_index = music_track_index
         self.control_track_index = control_track_index
+        return raw_events, tempo_events
 
-    def get_all_tracks(self):
-        track_info = []
-        with self.clock_lock:
-            if self.midi:
-                for i, track_idx in enumerate(self.music_track_index):
-                    track = self.midi.tracks[track_idx]
-                    track_info.append({"index": i, "name": track.name})
-        return track_info
+    def _prepare_key_mapping_and_active_tracks(
+        self, md_playback_param: MdPlaybackParam
+    ):
+        # 处理按键调整 以及 音轨处理
+        self.active_track_idx_set = set(
+            self.control_track_index
+            + (
+                self.music_track_index
+                if md_playback_param.active_track_idxes is None
+                else [
+                    self.music_track_index[t]
+                    for t in md_playback_param.active_track_idxes
+                ]
+            )
+        )
+        self.note_to_key, correct_radio_1base, octave_change = NoteFitting(
+            [self.midi.tracks[t] for t in self.active_track_idx_set],
+            md_playback_param.note_to_key_mapping,
+            cfg.get(cfg.player_play_disable_note_fitting),
+        )
+        self.signal_correct_info_changed.emit(correct_radio_1base, octave_change)
 
     def prepare(self, md_playback_param: MdPlaybackParam):
         self.stop()
 
         with self.clock_lock:
-            self.note_to_key = md_playback_param.note_to_key_mapping
-
             self.midi = mido.MidiFile(md_playback_param.midi_path)
-            self._split_control_and_music_track()
-            self.ticks_per_beat = self.midi.ticks_per_beat
-
-            raw_events = []  # (tick, type, note)
-            tempo_events = []  # (tick, tempo)
-
             # 初始 tempo
             initial_tempo = 500000
+            self.ticks_per_beat = self.midi.ticks_per_beat
 
-            tracks = (
-                [self.midi.tracks[t] for t in self.control_track_index]
-                + [
-                    self.midi.tracks[self.music_track_index[t]]
-                    for t in md_playback_param.active_tracks
-                ]
-                if md_playback_param.active_tracks is not None
-                else self.midi.tracks
-            )
-            self.note_to_key, correct_radio_1base, octave_change = NoteFitting(
-                tracks, self.note_to_key, cfg.get(cfg.player_play_disable_note_fitting)
-            )
-            for track in tracks:
-                current_tick = 0
-                for msg in track:
-                    current_tick += msg.time
-
-                    if msg.type in ("note_on", "note_off"):
-                        event_type = (
-                            "note_off"
-                            if (msg.type == "note_on" and msg.velocity == 0)
-                            else msg.type
-                        )
-                        raw_events.append((current_tick, event_type, msg.note))
-                    elif msg.type == "set_tempo":
-                        tempo_events.append((current_tick, msg.tempo))
-
+            raw_events, tempo_events = self._prepare_track_and_events()
             tempo_events.sort(key=lambda x: x[0])
             raw_events.sort(key=lambda x: x[0])
+            self._prepare_key_mapping_and_active_tracks(md_playback_param)
 
             # --- 精确计算所有事件的绝对微秒时间 ---
             final_events_with_micros = []
@@ -168,7 +173,7 @@ class QMidiPlayer(QtCore.QObject):
             last_event_micro = 0
             tempo_event_index = 0
 
-            for event_tick, event_type, note in raw_events:
+            for event_tick, event_type, note, trackIdx in raw_events:
                 while (
                     tempo_event_index < len(tempo_events)
                     and tempo_events[tempo_event_index][0] <= event_tick
@@ -191,7 +196,9 @@ class QMidiPlayer(QtCore.QObject):
                 ) // self.ticks_per_beat
                 current_event_micro = last_event_micro + micros_since_last
 
-                final_events_with_micros.append((current_event_micro, event_type, note))
+                final_events_with_micros.append(
+                    (current_event_micro, event_type, note, trackIdx)
+                )
 
                 last_event_tick = event_tick
                 last_event_micro = current_event_micro
@@ -204,7 +211,6 @@ class QMidiPlayer(QtCore.QObject):
                 f"预处理完毕，总事件数: {self.total_events}，总时长: {self.total_duration_us / 1000:.2f} ms"
             )
             self.signal_play_duration.emit(self.total_duration_us // 1000)
-            self.signal_correct_info_changed.emit(correct_radio_1base, octave_change)
 
     def _get_keys(self, note: int) -> List[str]:
         # (与上一版相同)
@@ -322,9 +328,12 @@ class QMidiPlayer(QtCore.QObject):
 
                         if event_time_us <= self.current_playback_time_us:
                             # 时间到，推入队列
-                            _, event_type, note = self.events[self.event_index]
-                            keys = self._get_keys(note)
-                            self.task_queue.put((event_type, keys))
+                            _, event_type, note, track_idx = self.events[
+                                self.event_index
+                            ]
+                            if track_idx in self.active_track_idx_set:
+                                keys = self._get_keys(note)
+                                self.task_queue.put((event_type, keys))
                             self.event_index += 1
                         else:
                             # 此事件在未来，停止检查
@@ -596,3 +605,22 @@ class QMidiPlayer(QtCore.QObject):
     def get_playback_state(self) -> PlayState:
         with self.clock_lock:
             return self.state
+
+    def get_all_tracks(self):
+        track_info = []
+        with self.clock_lock:
+            if self.midi:
+                for i, track_idx in enumerate(self.music_track_index):
+                    track = self.midi.tracks[track_idx]
+                    track_info.append({"index": i, "name": track.name})
+        return track_info
+
+    def handle_playback_param_change(self, md_playback_param: MdPlaybackParam):
+        with self.clock_lock:
+            if self.midi:
+                self._prepare_key_mapping_and_active_tracks(md_playback_param)
+
+    def handle_playback_param_change(self, md_playback_param: MdPlaybackParam):
+        with self.clock_lock:
+            if self.midi:
+                self._prepare_key_mapping_and_active_tracks(md_playback_param)

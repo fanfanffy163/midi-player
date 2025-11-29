@@ -4,19 +4,11 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont
-from PySide6.QtWidgets import (
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
-    InfoBar,
-    InfoBarPosition,
+    MessageBox,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
@@ -25,8 +17,10 @@ from qfluentwidgets import (
     StrongBodyLabel,
     SubtitleLabel,
     TextEdit,
+    TransparentToolButton,
 )
 
+from midiplayer.core.utils.config import cfg
 from midiplayer.core.utils.utils import Utils
 
 
@@ -112,7 +106,7 @@ class ConversionWorker(QThread):
             self.log_signal.emit(f"🎹 正在利用 music21 生成 MIDI...")
 
             midi_filename = mxl_path.stem + ".mid"
-            midi_path = mxl_path.parent / midi_filename
+            midi_path = Path(cfg.get(cfg.midi_folder)) / midi_filename
 
             from music21 import converter, midi, tempo
 
@@ -230,14 +224,8 @@ class DragDropWidget(CardWidget):
                 self.file_dropped.emit(f)
                 return
 
-        InfoBar.warning(
-            title="文件格式错误",
-            content="仅支持 PDF 或 图片格式。",
-            orient=Qt.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.TOP,
-            duration=2000,
-            parent=self.window(),
+        Utils.show_warning_infobar(
+            self=self, title="文件格式错误", content="仅支持 PDF 或 图片格式。"
         )
 
 
@@ -282,8 +270,18 @@ class OMRInterface(QWidget):
         info_layout.addWidget(self.lbl_status_title)
         info_layout.addWidget(self.lbl_current_path)
 
+        self.btn_info = TransparentToolButton(FIF.INFO, self)
+        self.btn_info.setToolTip("界面信息")
+        self.btn_info.clicked.connect(self._show_intro_dialog)
+
+        self.btn_refresh = TransparentToolButton(FIF.SYNC, self)
+        self.btn_refresh.setToolTip("刷新环境检测")
+        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
+
         self.btn_select_path = PushButton("手动选择路径", self, FIF.FOLDER)
         self.btn_select_path.clicked.connect(self._manual_select_path)
+        self.btn_jump_download = PushButton("去下载 Audiveris", self, FIF.DOWNLOAD)
+        self.btn_jump_download.clicked.connect(self._jump_download)
 
         # 顶部进度条 (初始化时隐藏)
         self.progress_bar = ProgressBar()
@@ -295,6 +293,13 @@ class OMRInterface(QWidget):
         self.top_layout.addSpacing(10)
         self.top_layout.addLayout(info_layout)
         self.top_layout.addStretch(1)
+
+        self.top_layout.addWidget(self.btn_info)
+        self.top_layout.addWidget(self.btn_refresh)
+        self.top_layout.addSpacing(10)
+
+        self.top_layout.addWidget(self.btn_jump_download)
+        self.top_layout.addSpacing(10)
         self.top_layout.addWidget(self.btn_select_path)
 
         # 进度条放在顶部卡片下方或内部，这里为了布局简单，不单独占位，
@@ -392,6 +397,37 @@ class OMRInterface(QWidget):
 
     # ================= 逻辑控制 =================
 
+    def _show_intro_dialog(self):
+        """显示功能介绍弹窗"""
+        title = "关于乐谱识别 (OMR)"
+        content = (
+            "本功能利用 OMR (Optical Music Recognition) 技术，将图片或 PDF 格式的乐谱转换为 MIDI 文件。\n\n"
+            "核心引擎：Audiveris (开源 OMR 引擎)\n"
+            "工作流程：\n"
+            "1. 拖入乐谱图片或 PDF。\n"
+            "2. 调用 Audiveris 进行后台识别，导出 MusicXML。\n"
+            "3. 自动将 MusicXML 转换为 MIDI 并在播放器中可用。\n\n"
+            "注意：识别效果取决于乐谱清晰度，复杂乐谱可能需要人工修正。"
+        )
+        w = MessageBox(title, content, self.window())
+        w.exec()
+
+    def _on_refresh_clicked(self):
+        """手动刷新环境检测"""
+        self.lbl_status_title.setText("正在重新检测...")
+        # 为了视觉反馈，这里可以短暂 disable 按钮
+        self.btn_refresh.setEnabled(False)
+        self._check_environment()
+        # 恢复按钮并提示
+        self.btn_refresh.setEnabled(True)
+
+        if self.audiveris_path:
+            Utils.show_success_infobar(self, "检测完成", "已成功找到 Audiveris。")
+        else:
+            Utils.show_warning_infobar(
+                self, "检测完成", "未能在默认路径找到 Audiveris，请尝试手动选择。"
+            )
+
     def _check_environment(self):
         """检测环境"""
         found_path = Utils.get_audiveris_by_file_omr_ext()
@@ -428,6 +464,11 @@ class OMRInterface(QWidget):
         )
         if file_path:
             self._update_env_status(True, file_path)
+
+    def _jump_download(self):
+        import webbrowser
+
+        webbrowser.open("https://github.com/Audiveris/audiveris")
 
     def _on_file_selected(self, file_path):
         """文件选择后的回调"""
@@ -505,21 +546,8 @@ class OMRInterface(QWidget):
             self.lbl_midi_info.setText(f"输出目录: {message}")
             self.lbl_midi_detail.setText("请检查输出目录下的 .mxl 或 .mid 文件")
 
-            InfoBar.success(
-                title="转换完成",
-                content=f"文件已保存至: {message}",
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                parent=self.window(),
+            Utils.show_success_infobar(
+                self=self, title="转换完成", content=f"文件已保存至: {message}"
             )
         else:
-            InfoBar.error(
-                title="发生错误",
-                content=message,
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=-1,
-                parent=self.window(),
-            )
+            Utils.show_error_infobar(self=self, title="发生错误", content=message)

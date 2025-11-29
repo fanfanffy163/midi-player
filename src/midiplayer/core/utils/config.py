@@ -9,8 +9,8 @@ from qfluentwidgets import (
     qconfig,
 )
 
-from ..component.settings.cmd_binding_setting import JsonSerializer
-from .utils import Utils
+from midiplayer.core.component.settings.cmd_binding_setting import JsonSerializer
+from midiplayer.core.utils.utils import Utils
 
 
 class AppConfig(QConfig):
@@ -19,9 +19,9 @@ class AppConfig(QConfig):
     player_play_single_loop = ConfigItem(
         "player", "play_single_loop", False, BoolValidator()
     )
-    player_play_single_track = ConfigItem(
-        "player", "play_single_track", False, BoolValidator()
-    )
+    # player_play_single_track = ConfigItem(
+    #     "player", "play_single_track", False, BoolValidator()
+    # )
     midi_folder = ConfigItem(
         "player",
         "midi_folder",

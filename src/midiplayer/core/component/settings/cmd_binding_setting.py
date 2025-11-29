@@ -15,7 +15,7 @@ from qfluentwidgets import (
     qconfig,
 )
 
-from ..common.key_binding_widget import KeyBindingWidget
+from midiplayer.core.component.common.key_binding_widget import KeyBindingWidget
 
 
 class CmdKeys(Enum):

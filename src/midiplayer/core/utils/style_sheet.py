@@ -3,7 +3,7 @@ from enum import Enum
 
 from qfluentwidgets import StyleSheetBase, Theme, qconfig
 
-from .utils import Utils
+from midiplayer.core.utils.utils import Utils
 
 
 class StyleSheet(StyleSheetBase, Enum):

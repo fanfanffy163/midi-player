@@ -15,14 +15,13 @@ from PySide6.QtWidgets import QApplication
 from qfluentwidgets import FluentIcon, FluentWindow, MessageBox, NavigationItemPosition
 
 from midiplayer.core.component.common.update_info_dialog import UpdateProgressDialog
+from midiplayer.core.component.pages.editor_page import EditorPage
+from midiplayer.core.component.pages.music_play_page import MusicPlayPage
 from midiplayer.core.component.pages.omr_page import OMRInterface
+from midiplayer.core.component.pages.present_page import PresentPage
+from midiplayer.core.component.pages.setting_page import SettingPage
+from midiplayer.core.utils.note_key_binding_db_manger import DBManager
 from midiplayer.core.utils.utils import Utils
-
-from ..component.pages.editor_page import EditorPage
-from ..component.pages.music_play_page import MusicPlayPage
-from ..component.pages.setting_page import SettingPage
-from ..utils.note_key_binding_db_manger import DBManager
-from .pages.present_page import PresentPage
 
 
 class CheckUpdateThread(QThread):
@@ -153,11 +152,11 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.editor_page, FluentIcon.EDIT, "按键编辑器")
         self.addSubInterface(self.present_page, FluentIcon.BOOK_SHELF, "按键预设管理")
         self.addSubInterface(self.music_play_page, FluentIcon.MUSIC, "Midi播放")
-        self.addSubInterface(self.omr_page, FluentIcon.CONSTRACT, "乐谱转Midi")
+        self.addSubInterface(self.omr_page, FluentIcon.UPDATE, "乐谱转Midi")
 
         self.navigationInterface.addItem(
             routeKey="update",
-            icon=FluentIcon.UPDATE,
+            icon=FluentIcon.INFO,
             text="检查更新",
             onClick=self.check_update,
             position=NavigationItemPosition.BOTTOM,

@@ -5,7 +5,7 @@ from PySide6.QtGui import QFontMetrics, QKeyEvent
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, FluentIcon, LineEdit, ToolButton
 
-from ...player.type import QT_KEY_MAP, QT_MODIFIER_KEYS
+from midiplayer.core.player.type import QT_KEY_MAP, QT_MODIFIER_KEYS
 
 # --- 自定义按键捕捉控件 ---
 

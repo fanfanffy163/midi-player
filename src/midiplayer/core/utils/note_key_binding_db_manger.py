@@ -1,10 +1,10 @@
 import json
 import sqlite3
-from typing import Dict, List, Optional
+from typing import Optional
 
 from loguru import logger
 
-from .utils import Utils
+from midiplayer.core.utils.utils import Utils
 
 # --- 数据库管理器 ---
 
@@ -38,7 +38,7 @@ class DBManager:
                 """
             )
 
-    def save_preset(self, name: str, mappings: Dict[str, str]) -> bool:
+    def save_preset(self, name: str, mappings: dict[str, str]) -> bool:
         """保存或更新一个预设。"""
         mappings_json = json.dumps(mappings)
         try:
@@ -52,7 +52,73 @@ class DBManager:
             logger.opt(exception=e).error(f"数据库保存错误: {e}")
             return False
 
-    def load_preset(self, name: str) -> Optional[Dict[str, str]]:
+    def save_presets_batch(self, presets_list: list[dict]) -> dict[str, int]:
+        """
+        批量保存预设。
+
+        返回:
+            {"inserted": int, "updated": int, "failed": int}
+        """
+        inserted = 0
+        updated = 0
+        failed = 0
+
+        if not presets_list:
+            return {"inserted": 0, "updated": 0, "failed": 0}
+
+        try:
+            cursor = self.conn.cursor()
+
+            # 1. 获取现有名称，仅用于统计是"新增"还是"覆盖"
+            # 实际的覆盖操作由 SQL 处理
+            cursor.execute("SELECT name FROM presets")
+            existing_names = {row[0] for row in cursor.fetchall()}
+
+            data_to_insert = []
+
+            # 2. 准备数据
+            for item in presets_list:
+                name = item.get("name")
+                mappings = item.get("mappings")
+
+                if not name or mappings is None:
+                    failed += 1
+                    continue
+
+                # 统计逻辑
+                if name in existing_names:
+                    updated += 1
+                else:
+                    inserted += 1
+
+                # 无论是否存在，都添加到待执行列表
+                try:
+                    json_str = json.dumps(mappings)
+                    data_to_insert.append((name, json_str))
+                except Exception as e:
+                    logger.error(f"序列化预设 '{name}' 失败: {e}")
+                    failed += 1
+
+            # 3. 开启事务并批量执行
+            if data_to_insert:
+                # 使用 INSERT OR REPLACE 实现：不存在则插入，存在则更新
+                cursor.executemany(
+                    "INSERT OR REPLACE INTO presets (name, mappings) VALUES (?, ?)",
+                    data_to_insert,
+                )
+
+            # 提交事务
+            self.conn.commit()
+
+        except sqlite3.Error as e:
+            logger.opt(exception=e).error(f"批量保存数据库错误: {e}")
+            self.conn.rollback()
+            # 事务回滚，所有操作都视为失败
+            return {"inserted": 0, "updated": 0, "failed": len(presets_list)}
+
+        return {"inserted": inserted, "updated": updated, "failed": failed}
+
+    def load_preset(self, name: str) -> Optional[dict[str, str]]:
         """根据名称加载一个预设。"""
         cursor = self.conn.cursor()
         cursor.execute("SELECT mappings FROM presets WHERE name = ?", (name,))
@@ -60,6 +126,32 @@ class DBManager:
         if row:
             return json.loads(row[0])
         return None
+
+    def load_all_presets(self) -> list[dict]:
+        """
+        批量获取所有预设，用于导出。
+        返回格式: [{"name": "预设A", "mappings": {...}}, ...]
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT name, mappings FROM presets")
+            rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                try:
+                    name = row[0]
+                    # 解析 JSON 字符串
+                    mappings_data = json.loads(row[1])
+
+                    result.append({"name": name, "mappings": mappings_data})
+                except Exception as e:
+                    logger.error(f"解析预设 '{row[0]}' 失败: {e}")
+                    continue
+            return result
+        except sqlite3.Error as e:
+            logger.opt(exception=e).error(f"批量加载失败: {e}")
+            return []
 
     def delete_preset(self, name: str) -> bool:
         """删除一个预设。"""
@@ -71,7 +163,7 @@ class DBManager:
             logger.opt(exception=e).error(f"数据库删除错误: {e}")
             return False
 
-    def list_presets(self, search_query: str = "") -> List[str]:
+    def list_presets(self, search_query: str = "") -> list[str]:
         """列出所有预设名称，可选地根据查询进行过滤。"""
         cursor = self.conn.cursor()
         if search_query:

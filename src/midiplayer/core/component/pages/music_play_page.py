@@ -1,15 +1,15 @@
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
 
-from ...utils.note_key_binding_db_manger import DBManager
-from ...utils.style_sheet import StyleSheet
-from ...utils.utils import Utils
-from ..common.midi_cards import MidiCards
-from ..common.music_player_bar import MusicPlayerBar
-from ..common.present_list import PresentList
+from midiplayer.core.component.common.midi_cards import MidiCards
+from midiplayer.core.component.common.music_player_bar import MusicPlayerBar
+from midiplayer.core.component.common.present_list import PresentList
+from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.utils.style_sheet import StyleSheet
+from midiplayer.core.utils.utils import Utils
 
 
 class MusicPlayPage(QWidget):
@@ -21,7 +21,7 @@ class MusicPlayPage(QWidget):
         self.db = db
 
         # 播放需要使用的参数
-        self.note_to_key_mappings: Dict[str, str] = None
+        self.note_to_key_mappings: dict[str, str] = None
         self.present_name: str | None = None
 
         # style

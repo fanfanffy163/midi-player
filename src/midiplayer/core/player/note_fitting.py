@@ -2,7 +2,7 @@
 
 from mido import MidiTrack
 
-from .type import MIDI_NOTE_MAP
+from midiplayer.core.player.type import MIDI_NOTE_MAP
 
 
 def NoteFitting(

@@ -15,10 +15,9 @@ from qfluentwidgets import (
     setThemeColor,
 )
 
-from ...utils.config import cfg
-from ...utils.style_sheet import StyleSheet
-from ...utils.utils import Utils
-from ..settings.cmd_binding_setting import CmdBindingSettingCard
+from midiplayer.core.component.settings.cmd_binding_setting import CmdBindingSettingCard
+from midiplayer.core.utils.config import cfg
+from midiplayer.core.utils.style_sheet import StyleSheet
 
 
 class SettingPage(ScrollArea):

@@ -20,13 +20,12 @@ from qfluentwidgets import (
 )
 
 from midiplayer.core.component.common.trace_select_view import TrackContentView
+from midiplayer.core.component.settings.cmd_binding_setting import CmdKeys
+from midiplayer.core.player.midi_player import QMidiPlayer
+from midiplayer.core.player.type import SONG_CHANGE_ACTIONS, MdPlaybackParam
+from midiplayer.core.utils.config import cfg
 from midiplayer.core.utils.note_key_binding_db_manger import DBManager
-
-from ...player.midi_player import QMidiPlayer
-from ...player.type import SONG_CHANGE_ACTIONS, MdPlaybackParam
-from ...utils.config import cfg
-from ...utils.utils import Utils
-from ..settings.cmd_binding_setting import CmdKeys
+from midiplayer.core.utils.utils import Utils
 
 
 class MusicPlayerBar(QFrame):
@@ -297,25 +296,30 @@ class MusicPlayerBar(QFrame):
     def _handle_cfg_changed(self, new_note_to_key_cfg=None, new_active_tracks=None):
         # 先停止当前歌曲
         if self.current_song:
-            tmp_playing = (
-                self.player.get_playback_state() == QMidiPlayer.PlayState.PLAYING
-            )
-            self.prepare_song(
-                name=self.current_song["name"],
-                path=self.current_song["path"],
-                note_to_key_cfg=(
+            # 设置媒体源并播放
+            self.current_song = {
+                "name": self.current_song["name"],
+                "path": self.current_song["path"],
+                "note_to_key_cfg": (
                     new_note_to_key_cfg
                     if new_note_to_key_cfg is not None
                     else self.current_song["note_to_key_cfg"]
                 ),
-                tracks=(
+                "tracks": (
                     new_active_tracks
                     if new_active_tracks is not None
                     else self.current_song["tracks"]
                 ),
+            }
+            self.player.handle_playback_param_change(
+                md_playback_param=MdPlaybackParam(
+                    midiPath=self.current_song["path"],
+                    noteToKeyMapping=self.current_song["note_to_key_cfg"],
+                    active_tracks=self.current_song["tracks"],
+                )
             )
-            if tmp_playing:
-                self.play_current_song()
+            self.song_info_label.setText(self.current_song["name"])
+            Utils.right_elide_label(self.song_info_label)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)

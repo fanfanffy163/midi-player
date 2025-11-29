@@ -5,7 +5,17 @@ from pathlib import Path
 import mido
 from loguru import logger
 from pypinyin import Style, pinyin
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import (
+    QObject,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    QUrl,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
@@ -24,9 +34,9 @@ from whoosh.fields import ID, NGRAM, TEXT, Schema
 from whoosh.index import create_in, exists_in, open_dir
 from whoosh.qparser import MultifieldParser, OrGroup
 
-from ...player.type import SONG_CHANGE_ACTIONS
-from ...utils.config import cfg
-from ...utils.utils import Utils
+from midiplayer.core.player.type import SONG_CHANGE_ACTIONS
+from midiplayer.core.utils.config import cfg
+from midiplayer.core.utils.utils import Utils
 
 
 # --- 1. 自定义 CardWidget ---
@@ -307,10 +317,13 @@ class MidiCards(QWidget):
         # 刷新按钮 (透明工具按钮风格)
         self.refresh_btn = TransparentToolButton(FluentIcon.SYNC, self)
         self.refresh_btn.setToolTip("刷新文件夹")
+        self.music_folder_btn = TransparentToolButton(FluentIcon.MUSIC_FOLDER, self)
+        self.music_folder_btn.setToolTip("打开文件夹")
 
         self.top_bar_layout.addWidget(self.search_box)
         self.top_bar_layout.addWidget(self.search_btn)
         self.top_bar_layout.addWidget(self.refresh_btn)
+        self.top_bar_layout.addWidget(self.music_folder_btn)
 
         self.scroll_area = ScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
@@ -369,6 +382,7 @@ class MidiCards(QWidget):
         self.search_box.returnPressed.connect(self.on_search_triggered)
         self.search_btn.clicked.connect(self.on_search_triggered)
         self.refresh_btn.clicked.connect(self.on_refresh_clicked)
+        self.music_folder_btn.clicked.connect(self.on_music_folder_clicked)
 
         self.prev_button.clicked.connect(self.prev_page)
         self.next_button.clicked.connect(self.next_page)
@@ -465,6 +479,11 @@ class MidiCards(QWidget):
         if current_path and os.path.exists(current_path):
             logger.info("用户请求刷新索引...")
             self.load_index_and_directory(current_path, force_rebuild=True)
+
+    @Slot()
+    def on_music_folder_clicked(self):
+        current_path = cfg.get(cfg.midi_folder)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(current_path))
 
     @Slot()
     def on_search_triggered(self):
