@@ -88,6 +88,9 @@ class QMidiPlayer(QtCore.QObject):
         # 这里的锁粒度非常小，很安全
         with self.clock_lock:
             pos_ms = int(self.current_playback_time_us // 1000)
+            logger.debug(
+                f"update position  current_placback_time : {self.current_playback_time_us}"
+            )
         self.signal_play_position.emit(pos_ms)
 
     def _prepare_track_and_events(self):
@@ -383,7 +386,7 @@ class QMidiPlayer(QtCore.QObject):
                         else:
                             # 【响应模式】
                             # 时间较长，计算一个安全的、可响应的睡眠时间
-                            responsive_wait_us = self.RESPONSIVE_LOOP_TIME_NS * 1000
+                            responsive_wait_us = self.RESPONSIVE_LOOP_TIME_NS
 
                             # 睡眠时间 = min(到下个音符的时间, 5ms的响应时间)
                             sleep_micros = min(wait_micros, responsive_wait_us)
