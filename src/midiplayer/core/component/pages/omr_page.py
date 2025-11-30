@@ -2,12 +2,14 @@ import os
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from loguru import logger
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
+    IndeterminateProgressRing,
     MessageBox,
     PrimaryPushButton,
     ProgressBar,
@@ -20,6 +22,7 @@ from qfluentwidgets import (
     TransparentToolButton,
 )
 
+from midiplayer.core.component.common.qlazy_widget import QLazyWidget
 from midiplayer.core.utils.config import cfg
 from midiplayer.core.utils.utils import Utils
 
@@ -159,8 +162,8 @@ class DragDropWidget(CardWidget):
         )
         self.icon_label.setAlignment(Qt.AlignCenter)
 
-        self.text_label = SubtitleLabel("拖拽 PDF/PNG 文件到此处")
-        self.sub_text = CaptionLabel("或者点击此处选择文件")
+        self.text_label = SubtitleLabel("点击选择五线谱乐谱文件")
+        self.sub_text = CaptionLabel("支持PNG/PDF格式")
         self.sub_text.setTextColor(QColor(158, 158, 158), QColor(158, 158, 158))
 
         layout.addStretch(1)
@@ -187,7 +190,7 @@ class DragDropWidget(CardWidget):
     def set_file_selected(self, filename):
         """选中文件后的视觉反馈"""
         self.text_label.setText(Utils.truncate_middle(f"已选择: {filename}", 30))
-        self.sub_text.setText("点击或拖拽可更换文件")
+        self.sub_text.setText("点击可更换文件")
         self.icon_label.setPixmap(
             FIF.DOCUMENT.icon(color=QColor(0, 159, 170)).pixmap(64, 64)
         )
@@ -232,23 +235,21 @@ class DragDropWidget(CardWidget):
 # ==========================================
 # 3. 主界面 (SubInterface)
 # ==========================================
-class OMRInterface(QWidget):
+class OMRInterface(QLazyWidget):
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, "正在加载OMR...")
         self.setObjectName("OMRInterface")
 
         # 数据状态
         self.audiveris_path = None
-        self.selected_file_path = None  # 存储当前选择的文件路径
+        self.selected_file_path = None
         self.current_worker = None
 
-        self._init_ui()
-        self._check_environment()
+    def _init_ui(self, ui_content: QWidget):
 
-    def _init_ui(self):
         # === 整体布局 ===
-        self.main_layout = QVBoxLayout(self)
+        self.main_layout = QVBoxLayout(ui_content)
         self.main_layout.setContentsMargins(15, 20, 15, 20)
         self.main_layout.setSpacing(10)
 
@@ -394,6 +395,10 @@ class OMRInterface(QWidget):
         self.main_layout.addWidget(self.progress_bar)
         self.main_layout.addLayout(self.content_layout)
         self.main_layout.addWidget(self.result_card)
+
+        # 最后执行环境检查
+        self._check_environment()
+        logger.info("OmrPage UI loaded")
 
     # ================= 逻辑控制 =================
 

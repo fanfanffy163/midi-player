@@ -20,7 +20,7 @@ from midiplayer.core.component.pages.music_play_page import MusicPlayPage
 from midiplayer.core.component.pages.omr_page import OMRInterface
 from midiplayer.core.component.pages.present_page import PresentPage
 from midiplayer.core.component.pages.setting_page import SettingPage
-from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.utils.db_manager import DBManager
 from midiplayer.core.utils.utils import Utils
 
 

@@ -1,7 +1,8 @@
 import json
 from typing import Optional
 
-from PySide6.QtCore import Signal
+from loguru import logger
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -9,29 +10,36 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import FluentIcon, MessageBox, PrimaryPushButton, PushButton
+from qfluentwidgets import (
+    FluentIcon,
+    IndeterminateProgressRing,
+    MessageBox,
+    PrimaryPushButton,
+    PushButton,
+)
 
 from midiplayer.core.component.common.confirm_message_box import ConfirmInputBox
 from midiplayer.core.component.common.present_list import PresentList
-from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.component.common.qlazy_widget import QLazyWidget
+from midiplayer.core.utils.db_manager import DBManager
 from midiplayer.core.utils.utils import Utils
 
 
-class PresentPage(QWidget):
+class PresentPage(QLazyWidget):
     signal_load_present = Signal(str, dict)
     signal_change_present = Signal(bool)
 
     """预设管理页面"""
 
     def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
-        super().__init__(parent)
+        super().__init__(parent, "正在加载配置管理...")
         self.setObjectName("PresetPage")
         self.db = db
 
-        main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(20)
+    def _init_ui(self, ui_content: QWidget):
 
-        # 左侧：列表和搜索
+        self.main_layout = QHBoxLayout(ui_content)
+        # 左侧
         left_layout = QVBoxLayout()
         self.present_list_widget = PresentList(self.db, self)
         left_layout.addWidget(self.present_list_widget)
@@ -62,13 +70,19 @@ class PresentPage(QWidget):
         right_layout.addWidget(self.batch_export_button)
         right_layout.addStretch()
 
-        main_layout.addLayout(left_layout, 2)  # 左侧占2份
-        main_layout.addLayout(right_layout, 1)  # 右侧占1份
+        self.main_layout.addLayout(left_layout, 2)
+        self.main_layout.addLayout(right_layout, 1)
 
         # 信号连接
         self.present_list_widget.signal_item_selected.connect(self.on_selection_changed)
         self.connect_signals()
         self.on_selection_changed(None)
+
+        logger.info("PresentPage UI loaded")
+
+    def refresh_preset_list(self):
+        if self.lazy_loaded and hasattr(self, "present_list_widget"):
+            self.present_list_widget.refresh_preset_list()
 
     def on_selection_changed(self, current_item: Optional[QListWidgetItem]):
         """当列表选择变化时，更新按钮状态"""
@@ -86,10 +100,6 @@ class PresentPage(QWidget):
         self.export_button.clicked.connect(self.on_export_selected_preset)
         self.batch_import_button.clicked.connect(self.on_batch_import_presets)
         self.batch_export_button.clicked.connect(self.on_batch_export_presets)
-
-    def refresh_preset_list(self):
-        """刷新预设列表"""
-        self.present_list_widget.refresh_preset_list()
 
     def on_load_selected_preset(self):
         """点击"加载选定预设"按钮"""
@@ -309,6 +319,12 @@ class PresentPage(QWidget):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(final_data, f, indent=4, ensure_ascii=False)
 
+            Utils.show_success_infobar(
+                self, "打包导出成功", f"已成功导出 {len(all_presets)} 个预设。"
+            )
+
+        except Exception as e:
+            Utils.show_error_infobar(self, "导出失败", f"文件写入出错: {e}")
             Utils.show_success_infobar(
                 self, "打包导出成功", f"已成功导出 {len(all_presets)} 个预设。"
             )

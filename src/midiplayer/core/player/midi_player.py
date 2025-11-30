@@ -612,7 +612,9 @@ class QMidiPlayer(QtCore.QObject):
             if self.midi:
                 for i, track_idx in enumerate(self.music_track_index):
                     track = self.midi.tracks[track_idx]
-                    track_info.append({"index": i, "name": track.name})
+                    track_info.append(
+                        {"index": i, "name": track.name, "num": len(track)}
+                    )
         return track_info
 
     def handle_playback_param_change(self, md_playback_param: MdPlaybackParam):

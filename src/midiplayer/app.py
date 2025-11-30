@@ -58,6 +58,8 @@ def main():
 
     # 窗口
     app = QApplication(sys.argv)
+    logger.info("MainWindow creating")
     window = MainWindow()
+    logger.info("MainWindow created")
     window.show()
     sys.exit(app.exec())

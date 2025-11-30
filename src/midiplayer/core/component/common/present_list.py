@@ -4,7 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QListWidgetItem, QVBoxLayout, QWidget
 from qfluentwidgets import ListWidget, SearchLineEdit
 
-from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.utils.db_manager import DBManager
 
 
 class PresentList(QWidget):

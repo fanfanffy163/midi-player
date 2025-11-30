@@ -1,5 +1,6 @@
 # coding:utf-8
 import pydirectinput
+from loguru import logger
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QLabel, QWidget
 from qfluentwidgets import CustomColorSettingCard, ExpandLayout
@@ -109,6 +110,8 @@ class SettingPage(ScrollArea):
             self.appGroup,
         )
         self.__initWidget()
+
+        logger.info("SettingPage UI loaded")
 
     def __initWidget(self):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

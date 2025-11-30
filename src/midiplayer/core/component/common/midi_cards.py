@@ -23,8 +23,8 @@ from qfluentwidgets import (
     CardWidget,
     FluentIcon,
     PrimaryPushButton,
-    ScrollArea,
     SearchLineEdit,
+    SmoothScrollArea,
     StrongBodyLabel,
     ThemeColor,
     TransparentToolButton,
@@ -325,7 +325,7 @@ class MidiCards(QWidget):
         self.top_bar_layout.addWidget(self.refresh_btn)
         self.top_bar_layout.addWidget(self.music_folder_btn)
 
-        self.scroll_area = ScrollArea(self)
+        self.scroll_area = SmoothScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_content = QWidget()
         self.card_layout = QVBoxLayout(self.scroll_content)

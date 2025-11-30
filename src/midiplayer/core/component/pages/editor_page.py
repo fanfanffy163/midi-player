@@ -1,10 +1,12 @@
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from loguru import logger
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     CaptionLabel,
     FluentIcon,
+    IndeterminateProgressRing,
     PrimaryPushButton,
     PushButton,
     ScrollArea,
@@ -14,7 +16,8 @@ from qfluentwidgets import (
 
 from midiplayer.core.component.common.confirm_message_box import ConfirmInputBox
 from midiplayer.core.component.common.key_binding_widget import KeyBindingWidget
-from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.component.common.qlazy_widget import QLazyWidget
+from midiplayer.core.utils.db_manager import DBManager
 from midiplayer.core.utils.style_sheet import StyleSheet
 from midiplayer.core.utils.utils import Utils
 
@@ -175,24 +178,26 @@ SIMPLE_NOTES_SET = {
 # --- UI 页面 ---
 
 
-class EditorPage(QWidget):
+class EditorPage(QLazyWidget):
     signal_save_preset = Signal(bool)
 
     """按键绑定编辑器页面"""
 
     def __init__(self, db: DBManager, parent: Optional[QWidget] = None):
-        super().__init__(parent)
+        super().__init__(parent, "正在初始化编辑器...")
         self.setObjectName("EditorPage")
-        self.binding_widgets: list[KeyBindingWidget] = []
-        # 1. 初始化后端
         self.db = db
         self.current_preset_name: Optional[str] = None
 
-        main_layout = QVBoxLayout(self)
+        self._pending_mappings = None  # 暂存外部传入的数据
+        self.binding_widgets: list[KeyBindingWidget] = []
 
-        # style
-        StyleSheet.EDITOR_PAGE.apply(self)
+    def _init_ui(self, ui_content: QWidget):
+        """真正的 UI 初始化逻辑"""
+        # --- 以下是原本 __init__ 中的逻辑 ---
 
+        # 1. layout
+        self.main_layout = QVBoxLayout(ui_content)
         # 2. 顶部控制栏
         control_layout = QHBoxLayout()
         self.title_label = SubtitleLabel("按键绑定编辑器", self)
@@ -200,11 +205,11 @@ class EditorPage(QWidget):
         control_layout.addStretch()
         control_layout.addWidget(CaptionLabel("精简模式"))
         self.simple_mode_switch = SwitchButton(self)
-        self.simple_mode_switch.setChecked(True)  # 默认开启
+        self.simple_mode_switch.setChecked(True)
         self.simple_mode_switch.checkedChanged.connect(self.toggle_view_mode)
         control_layout.addWidget(self.simple_mode_switch)
 
-        main_layout.addLayout(control_layout)
+        self.main_layout.addLayout(control_layout)
 
         # 3. 滚动区域
         self.scroll_area = ScrollArea(self)
@@ -212,9 +217,7 @@ class EditorPage(QWidget):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         scroll_content = QWidget()
-        self.form_layout = QFormLayout(
-            scroll_content
-        )  # 使用QFormLayout实现标签和控件对齐
+        self.form_layout = QFormLayout(scroll_content)
         self.form_layout.setContentsMargins(10, 10, 10, 10)
         self.form_layout.setHorizontalSpacing(20)
         self.form_layout.setVerticalSpacing(10)
@@ -223,18 +226,14 @@ class EditorPage(QWidget):
         for note in ALL_NOTES:
             binding_widget = KeyBindingWidget(note)
             self.binding_widgets.append(binding_widget)
-            # QFormLayout.addRow(QLabel, QWidget)
-            # 我们将自定义控件的标签用作 QFormLayout 的标签，控件本身用作 QWidget
-            # 为了美观，我们复用 binding_widget 里的 label
             self.form_layout.addRow(binding_widget.label, binding_widget)
 
         self.scroll_area.setWidget(scroll_content)
         scroll_content.setObjectName("ScrollContent")
-        main_layout.addWidget(self.scroll_area)
+        self.main_layout.addWidget(self.scroll_area)
 
         # 5.创建按钮
-        main_layout.addSpacing(10)
-
+        self.main_layout.addSpacing(10)
         button_layout = QHBoxLayout()
         button_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.reset_button = PushButton(FluentIcon.CLOSE, "重置所有绑定", self)
@@ -244,14 +243,22 @@ class EditorPage(QWidget):
         button_layout.addWidget(self.reset_button)
         button_layout.addSpacing(20)
         button_layout.addWidget(self.save_current_button)
-        main_layout.addLayout(button_layout)
+        self.main_layout.addLayout(button_layout)
 
         self.save_current_button.clicked.connect(self.on_save_current_preset)
         self.reset_button.clicked.connect(self.on_reset_editor)
 
-        # 初始加载时应用一次精简模式
+        # 初始设置
         self.toggle_view_mode(True)
-        self.set_editor_title(None)
+        self.set_editor_title(self.current_preset_name)
+
+        # 检查是否有挂起的数据需要加载
+        if self._pending_mappings:
+            self.set_all_mappings(self._pending_mappings)
+            self._pending_mappings = None
+
+        StyleSheet.EDITOR_PAGE.apply(self)
+        logger.info("EditorPage UI loaded")
 
     def toggle_view_mode(self, is_simple_mode: bool):
         """切换精简/完全视图"""
@@ -285,9 +292,13 @@ class EditorPage(QWidget):
 
     def set_all_mappings(self, mappings: dict[str, list[str]]):
         """从字典加载映射到编辑器"""
+        if not self.lazy_loaded or not self.binding_widgets:
+            self._pending_mappings = mappings
+            return
+
         for widget in self.binding_widgets:
             note_name = widget.get_name()
-            binding = mappings.get(note_name, "")  # 找不到则设置为空
+            binding = mappings.get(note_name, "")
             widget.set_binding(binding)
 
     def clear_all_mappings(self):

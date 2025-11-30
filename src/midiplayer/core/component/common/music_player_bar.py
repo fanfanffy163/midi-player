@@ -12,19 +12,18 @@ from qfluentwidgets import (
     FluentIcon,
     Flyout,
     FlyoutAnimationType,
-    FlyoutView,
     PushButton,
     Slider,
     StrongBodyLabel,
     TransparentToolButton,
 )
 
-from midiplayer.core.component.common.trace_select_view import TrackContentView
+from midiplayer.core.component.common.track_select_view import TrackContentView
 from midiplayer.core.component.settings.cmd_binding_setting import CmdKeys
 from midiplayer.core.player.midi_player import QMidiPlayer
 from midiplayer.core.player.type import SONG_CHANGE_ACTIONS, MdPlaybackParam
 from midiplayer.core.utils.config import cfg
-from midiplayer.core.utils.note_key_binding_db_manger import DBManager
+from midiplayer.core.utils.db_manager import DBManager
 from midiplayer.core.utils.utils import Utils
 
 
@@ -153,9 +152,7 @@ class MusicPlayerBar(QFrame):
 
         # --- 新增：音轨选择按钮 ---
         # 放在速度控制旁边，或者控制栏右侧
-        self.track_select_button = TransparentToolButton(
-            FluentIcon.MUSIC_FOLDER
-        )  # 或者选一个像图层的图标
+        self.track_select_button = TransparentToolButton(FluentIcon.ALBUM)
         self.track_select_button.setToolTip("选择音轨")
         self.track_select_button.clicked.connect(self.show_track_selection_flyout)
 
@@ -225,6 +222,7 @@ class MusicPlayerBar(QFrame):
     # --- 核心逻辑：显示弹窗 ---
     def show_track_selection_flyout(self):
         if not self.current_song:
+            Utils.show_info_infobar(self=self, title="提示", content="请先选择歌曲")
             return
 
         current_path = self.current_song["path"]
