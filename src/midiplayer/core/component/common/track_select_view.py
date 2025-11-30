@@ -1,9 +1,8 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 from qfluentwidgets import CheckBox, SimpleCardWidget, SmoothScrollArea, StrongBodyLabel
 
 
-# 1. 改为继承 SimpleCardWidget，自带卡片背景和边框
 class TrackContentView(SimpleCardWidget):
     """音轨选择的具体内容组件"""
 

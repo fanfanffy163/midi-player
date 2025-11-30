@@ -39,8 +39,6 @@ from midiplayer.core.utils.config import cfg
 from midiplayer.core.utils.utils import Utils
 
 
-# --- 1. 自定义 CardWidget ---
-# (与您提供的版本完全相同，无需更改)
 class MidiCard(CardWidget):
     """
     一个自定义的CardWidget，用于显示单个MIDI文件的信息。
@@ -60,7 +58,7 @@ class MidiCard(CardWidget):
         self.name_label = StrongBodyLabel(Utils.truncate_middle(self.midi_name))
         self.duration_label = BodyLabel("时长: 正在加载中...")
         self.path_label = CaptionLabel(Utils.truncate_middle(self.path_str))
-        self.status_label = BodyLabel("状态: 排队中")  # <-- 初始状态
+        self.status_label = BodyLabel("状态: 排队中")
 
         # 布局
         layout = QVBoxLayout(self)
@@ -73,7 +71,7 @@ class MidiCard(CardWidget):
         layout.addLayout(left_layout)
         layout.addLayout(right_layout)
 
-        self.setFixedHeight(80)  # 固定卡片大小
+        self.setFixedHeight(80)
         self.setClickEnabled(True)
 
     def mousePressEvent(self, e):
@@ -108,9 +106,7 @@ class MidiCard(CardWidget):
         self.setStyleSheet("MidiCard { border: 1px solid red; }")
 
 
-# --- 2. 异步任务定义 ---
-
-
+# --- 异步任务定义 ---
 class WorkerSignals(QObject):
     """
     定义所有 QRunnable 任务可以发出的信号。
@@ -126,9 +122,9 @@ class WorkerSignals(QObject):
     single_load_complete = Signal(str, str, object)
 
 
-# --- 3. Whoosh FTS (全文搜索) 任务 ---
+# --- Whoosh FTS (全文搜索) 任务 ---
 
-# --- 3a. Whoosh Schema (索引结构) ---
+# --- Whoosh Schema (索引结构) ---
 SCHEMA = Schema(
     path=ID(stored=True, unique=True),
     name_ngram=NGRAM(minsize=1, maxsize=10, stored=False),
@@ -136,7 +132,7 @@ SCHEMA = Schema(
 )
 
 
-# --- 3b. 索引构建器 (无修改) ---
+# --- 索引构建器 (无修改) ---
 class IndexBuilderTask(QRunnable):
     """
     后台任务：使用 Whoosh 创建 FTS 索引，并写入一个 .meta 清单文件
@@ -205,7 +201,7 @@ class IndexBuilderTask(QRunnable):
             self.signals.index_ready.emit(False)
 
 
-# --- 3c. 搜索器 (无修改) ---
+# --- 搜索器 ---
 class SearchTask(QRunnable):
     """
     后台任务：使用 Whoosh 索引和查询词进行毫秒级过滤。
@@ -246,7 +242,7 @@ class SearchTask(QRunnable):
             self.signals.search_complete.emit([])
 
 
-# --- 3d. (新) 单个加载器 ---
+# --- MIDI单个加载器 ---
 class SingleLoaderTask(QRunnable):
     """
     一个 QRunnable 任务，用于在子线程中加载 *单个* MIDI 文件。
@@ -271,16 +267,12 @@ class SingleLoaderTask(QRunnable):
             self.signals.single_load_complete.emit(self.path_str, "error", error_str)
 
 
-# --- 4. 主窗口 (重构版) ---
-
-
+# --- 主窗口 ---
 class MidiCards(QWidget):
 
     signal_card_clicked = Signal(Path)
     ITEMS_PER_PAGE = 50
     INDEX_DIR = Path(Utils.user_path("midi_index_whoosh"))
-
-    # (移除 MAX_DISPATCH_TASKS，不再需要)
 
     def __init__(self, parent):
         super().__init__(parent=parent)
@@ -292,7 +284,7 @@ class MidiCards(QWidget):
         # 2. 状态
         self.is_index_ready = False
         self.threadpool = QThreadPool()
-        # 我们可以使用更多线程，因为任务（加载单个MIDI）非常轻量
+        # midi文件解析是高cpu计算行为，不使用过多线程造成ui卡顿
         self.threadpool.setMaxThreadCount(1)
 
         self.current_page = 0
@@ -314,7 +306,7 @@ class MidiCards(QWidget):
         # 搜索按钮
         self.search_btn = PrimaryPushButton("搜索", self)
         self.search_btn.setIcon(FluentIcon.SEARCH)
-        # 刷新按钮 (透明工具按钮风格)
+        # 刷新按钮
         self.refresh_btn = TransparentToolButton(FluentIcon.SYNC, self)
         self.refresh_btn.setToolTip("刷新文件夹")
         self.music_folder_btn = TransparentToolButton(FluentIcon.MUSIC_FOLDER, self)
@@ -392,7 +384,7 @@ class MidiCards(QWidget):
     def _on_folder_change(self, path: Path):
         self.load_index_and_directory(str(path), force_rebuild=True)
 
-    # --- 智能索引加载 (无修改) ---
+    # --- 智能索引加载 ---
     def load_index_and_directory(self, dir_path_str: str, force_rebuild: bool = False):
         dir_path = Path(dir_path_str)
         meta_path = self.INDEX_DIR / "index.meta"
@@ -459,7 +451,6 @@ class MidiCards(QWidget):
 
     @Slot(bool)
     def on_index_ready(self, success: bool):
-        # (无修改)
         if not success:
             logger.debug("索引构建失败。")
             self.search_box.setText("索引构建失败！")
@@ -499,7 +490,6 @@ class MidiCards(QWidget):
 
     @Slot()
     def _trigger_search(self, get_all_paths: bool = False):
-        # (无修改)
         if not self.is_index_ready:
             return
 
@@ -518,13 +508,12 @@ class MidiCards(QWidget):
 
     @Slot(list)
     def _on_all_paths_loaded(self, all_paths: list):
-        # (无修改)
         logger.debug(f"已加载所有路径: {len(all_paths)}")
         all_paths = Utils.sort_path_list_by_name(all_paths)
         self.all_midi_paths = all_paths
         self.on_search_results(all_paths)
 
-    # --- (重构) 层级 1：渲染与分发 ---
+    # --- 层级 1：渲染与分发 ---
     @Slot(list)
     def on_search_results(self, filtered_paths: list):
         """
@@ -551,7 +540,7 @@ class MidiCards(QWidget):
 
         self.clear_layout(self.card_layout)
 
-        # --- 新逻辑：立即渲染，异步加载 ---
+        # --- 立即渲染，异步加载 ---
 
         if not paths_to_display:
             # (如果列表为空，在此处返回)
@@ -582,20 +571,18 @@ class MidiCards(QWidget):
             else:
                 # 3. 缓存未命中，设置加载中并派发任务
                 card.set_loading()  # 设置为 "⏳ 加载中..."
-
                 task = SingleLoaderTask(path)
-                # 关键: 连接到新的槽
                 task.signals.single_load_complete.connect(self._on_single_load_complete)
                 self.threadpool.start(task)
 
-    # --- (新增) 异步更新槽 ---
+    # --- 异步更新槽 ---
     @Slot(str, str, object)
     def _on_single_load_complete(self, path_str: str, status: str, data: object):
         """
-        (新) 当一个 SingleLoaderTask 完成时调用 (主线程)
+        当一个 SingleLoaderTask 完成时调用 (主线程)
         """
         # 1. 无论如何，先缓存结果
-        # (注意：我们缓存成功(float)和失败(str))
+        # (注意：缓存成功(float)和失败(str))
         self.midi_data_cache[path_str] = data
 
         # 2. 查找对应的卡片
@@ -627,7 +614,6 @@ class MidiCards(QWidget):
 
     def clear_layout(self, layout):
         """清空布局中的所有小部件"""
-        # (移除了 self.batch_collector = {})
         while layout.count():
             child = layout.takeAt(0)
             if child.widget():
@@ -635,7 +621,6 @@ class MidiCards(QWidget):
 
     @Slot(object)
     def on_card_clicked(self, clicked_card: MidiCard | None, path_str: str = ""):
-        # (无修改)
         if clicked_card and self.selected_path_str == clicked_card.path_str:
             return
 
@@ -657,7 +642,6 @@ class MidiCards(QWidget):
 
     def find_visible_card(self, path_str: str) -> MidiCard | None:
         """在当前显示的卡片中查找匹配的卡片"""
-        # (无修改)
         for i in range(self.card_layout.count()):
             widget = self.card_layout.itemAt(i).widget()
             if isinstance(widget, MidiCard) and widget.path_str == path_str:
@@ -665,7 +649,6 @@ class MidiCards(QWidget):
         return None
 
     def get_card_and_select(self, action: SONG_CHANGE_ACTIONS) -> Path | None:
-        # (无修改，此逻辑依赖于 self.midi_data_cache，新架构依然维护此缓存)
         all_paths = self.all_midi_paths
         if not all_paths:
             return None
@@ -713,7 +696,6 @@ class MidiCards(QWidget):
                         self.current_page = target_page
                         # 触发重新渲染
                         self.on_search_results(self.current_filtered_paths)
-                        # 渲染后高亮 (需要延迟)
                         QTimer.singleShot(
                             50, lambda: self.on_card_clicked(None, str(next_path))
                         )

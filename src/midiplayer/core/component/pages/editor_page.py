@@ -1,12 +1,11 @@
 from typing import Optional
 
 from loguru import logger
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     CaptionLabel,
     FluentIcon,
-    IndeterminateProgressRing,
     PrimaryPushButton,
     PushButton,
     ScrollArea,
@@ -194,8 +193,6 @@ class EditorPage(QLazyWidget):
 
     def _init_ui(self, ui_content: QWidget):
         """真正的 UI 初始化逻辑"""
-        # --- 以下是原本 __init__ 中的逻辑 ---
-
         # 1. layout
         self.main_layout = QVBoxLayout(ui_content)
         # 2. 顶部控制栏

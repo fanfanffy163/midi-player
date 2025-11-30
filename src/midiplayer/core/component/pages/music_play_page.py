@@ -2,9 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
-from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QListWidgetItem, QVBoxLayout, QWidget
-from qfluentwidgets import CaptionLabel, IndeterminateProgressRing
 
 from midiplayer.core.component.common.midi_cards import MidiCards
 from midiplayer.core.component.common.music_player_bar import MusicPlayerBar

@@ -38,7 +38,7 @@ class CheckUpdateThread(QThread):
 
     def run(self):
         try:
-            # 5秒超时，防止界面卡死
+            # 5秒超时
             resp = requests.get(self.api_url, timeout=5)
             if resp.status_code != 200:
                 self.check_finished.emit(
@@ -82,7 +82,6 @@ class DownloadThread(QThread):
     def run(self):
         final_url = self.url
         try:
-            # stream=True 是显示进度的关键
             with requests.get(
                 final_url,
                 stream=True,
@@ -184,8 +183,7 @@ class MainWindow(FluentWindow):
         super().closeEvent(event)
 
     def check_update(self):
-        Utils.show_info_infobar(self, "提示", "正在连接 GitHub...")
-        # 替换你的 GitHub 信息
+        Utils.show_info_infobar(self, "提示", "正在连接 GitHub 检查更新信息...")
         self.check_thread = CheckUpdateThread(
             self.app_version, self.app_author, self.app_name
         )
@@ -261,7 +259,7 @@ class MainWindow(FluentWindow):
     def launch_updater_and_quit(self, zip_path):
         """核心：准备环境，启动 updater.exe，自杀"""
         try:
-            # A. 寻找 updater.exe (开发环境/打包环境兼容)
+            # 寻找 updater.exe (开发环境/打包环境兼容)
 
             updater_src = str(Utils.app_root_path("updater.exe"))
 
@@ -269,13 +267,13 @@ class MainWindow(FluentWindow):
                 Utils.show_error_infobar(self, "错误", "丢失 updater.exe 文件！")
                 return
 
-            # B. 复制 updater 到临时目录 (防止被锁)
+            # 复制 updater 到临时目录 (防止被锁)
             temp_updater = os.path.join(
                 os.path.dirname(zip_path), "updater_installer.exe"
             )
             shutil.copy(updater_src, temp_updater)
 
-            # C. 准备参数
+            # 准备参数
             # 1. updater路径 2. zip包路径 3. 安装目录 4. 主程序exe名 5. 主程序PID
             install_dir = (
                 os.path.dirname(sys.executable)
@@ -288,10 +286,10 @@ class MainWindow(FluentWindow):
             cmd = [temp_updater, zip_path, install_dir, exe_name, pid]
 
             logger.info(f"准备启动更新，参数{cmd}")
-            # D. 启动
+            # 启动
             subprocess.Popen(cmd)
 
-            # E. 退出主程序
+            # 退出主程序
             QApplication.quit()
 
         except Exception as e:

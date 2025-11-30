@@ -10,7 +10,7 @@ class QLazyWidget(QWidget):
         super().__init__(parent)
         self.lazy_loaded = False
 
-        # 1.这是永久的根布局，永远不删除
+        # 1. 根布局
         self.root_layout = QStackedLayout(self)
 
         # 2. 创建一个临时容器放 Loading 动画

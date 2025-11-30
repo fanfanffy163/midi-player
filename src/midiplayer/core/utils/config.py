@@ -13,6 +13,7 @@ from midiplayer.core.component.settings.cmd_binding_setting import JsonSerialize
 from midiplayer.core.utils.utils import Utils
 
 
+# 应用全局配置
 class AppConfig(QConfig):
     micaEnabled = ConfigItem("global", "MicaEnabled", Utils.isWin11(), BoolValidator())
 
@@ -56,4 +57,5 @@ class AppConfig(QConfig):
 
 cfg = AppConfig()
 cfg.themeMode.value = Theme.AUTO
+qconfig.load(str(Utils.user_path("app_config.json")), cfg)
 qconfig.load(str(Utils.user_path("app_config.json")), cfg)

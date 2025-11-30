@@ -32,7 +32,7 @@ class MusicPlayerBar(QFrame):
     signal_cmd_key_pressed = Signal(object)
 
     """
-    使用手动列表管理 (替代 QMediaPlaylist) 的 Qt 6 播放器 Bar
+    仿音乐播放器条
     """
 
     def __init__(self, parent=None, db: DBManager = None):
@@ -51,7 +51,7 @@ class MusicPlayerBar(QFrame):
         self.player = QMidiPlayer()
         self.player.start_player()
 
-        # --- 3. 初始化UI控件 (使用 Fluent Widgets) ---
+        # --- 3. 初始化UI控件 ---
         self.init_ui()
 
         # --- 4. 连接信号与槽 ---
@@ -68,7 +68,6 @@ class MusicPlayerBar(QFrame):
         self.signal_cmd_key_pressed.connect(self._on_press_key)
         cfg.player_play_shortcuts.valueChanged.connect(self._on_change_shortcuts)
 
-        # 设置播放Bar的温暖样式
         self.setObjectName("MusicPlayerBar")
 
     def _init_shortcuts(self):
@@ -117,7 +116,6 @@ class MusicPlayerBar(QFrame):
                 return
 
     def init_ui(self):
-        # ... (这部分和上一个示例完全相同) ...
         # --- 图标 ---
         self.play_icon = FluentIcon.PLAY
         self.pause_icon = FluentIcon.PAUSE
@@ -150,8 +148,7 @@ class MusicPlayerBar(QFrame):
         self.rate_label = BodyLabel("x1.0")
         self.rate_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # --- 新增：音轨选择按钮 ---
-        # 放在速度控制旁边，或者控制栏右侧
+        # --- 音轨选择按钮 ---
         self.track_select_button = TransparentToolButton(FluentIcon.ALBUM)
         self.track_select_button.setToolTip("选择音轨")
         self.track_select_button.clicked.connect(self.show_track_selection_flyout)
@@ -182,7 +179,7 @@ class MusicPlayerBar(QFrame):
         speed_layout.addWidget(self.slow_down_button)
         speed_layout.addWidget(self.rate_label)
         speed_layout.addWidget(self.speed_up_button)
-        # 新增
+
         speed_layout.addSpacing(10)
         speed_layout.addWidget(self.track_select_button)
         main_layout.addLayout(speed_layout, 2)
@@ -205,7 +202,7 @@ class MusicPlayerBar(QFrame):
         self.player.signal_play_position.connect(self.update_slider_position)
         self.player.signal_correct_info_changed.connect(self._on_correct_info_change)
 
-        # *** 关键：连接歌曲结束信号 ***
+        # --- 连接歌曲结束信号 ---
         self.player.signal_media_done.connect(self.on_media_status_changed)
 
         # --- 滑块信号 ---
@@ -227,7 +224,7 @@ class MusicPlayerBar(QFrame):
 
         current_path = self.current_song["path"]
 
-        # 1. 获取后端音轨信息
+        # 1. 获取音轨信息
         # 格式示例: [{"index": 0, "name": "Piano"}, {"index": 1, "name": "Bass"}]
         track_info_list = self._get_track_details()
 
@@ -344,7 +341,7 @@ class MusicPlayerBar(QFrame):
         self.player.stop_player()
         self.keyboard_listener.stop()
 
-    # --- 核心播放逻辑 ---
+    # --- 准备好即将要播放的数据 ---
     def prepare_song(self, name: str, path: str, note_to_key_cfg: dict, tracks):
         # 设置媒体源并播放
         self.current_song = {

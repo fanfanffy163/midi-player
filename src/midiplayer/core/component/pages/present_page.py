@@ -2,7 +2,7 @@ import json
 from typing import Optional
 
 from loguru import logger
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -10,13 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import (
-    FluentIcon,
-    IndeterminateProgressRing,
-    MessageBox,
-    PrimaryPushButton,
-    PushButton,
-)
+from qfluentwidgets import FluentIcon, MessageBox, PrimaryPushButton, PushButton
 
 from midiplayer.core.component.common.confirm_message_box import ConfirmInputBox
 from midiplayer.core.component.common.present_list import PresentList
@@ -299,7 +293,6 @@ class PresentPage(QLazyWidget):
 
     def on_batch_export_presets(self):
         """批量导出：使用数据库批量读取，一次性写入文件"""
-        # 直接询问保存路径
         file_path, _ = QFileDialog.getSaveFileName(
             self, "导出预设包", "所有预设.json", "JSON 文件 (*.json)"
         )

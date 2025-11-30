@@ -13,7 +13,7 @@ from midiplayer.core.player.type import QT_KEY_MAP, QT_MODIFIER_KEYS
 class KeyCaptureLineEdit(LineEdit):
     """
     一个自定义的LineEdit，用于捕捉按键组合。
-    它不使用pynput，而是覆盖Qt的keyPressEvent。
+    使用Qt的keyPressEvent
     """
 
     # 信号：当组合键被设置时发出
@@ -138,7 +138,7 @@ class KeyBindingWidget(QWidget):
         self.label = BodyLabel(name, self)
         # 根据标签内容自动设置一个合理的最小宽度
         fm = QFontMetrics(self.label.font())
-        width = fm.horizontalAdvance(name + "  ")  # 增加一点padding
+        width = fm.horizontalAdvance(name + "  ")
         self.label.setMinimumWidth(width)
 
         self.key_capture_edit = KeyCaptureLineEdit(self, max_key_count)

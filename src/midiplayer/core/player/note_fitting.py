@@ -24,7 +24,6 @@ def NoteFitting(
         return note_to_key_mapping, 1.0, 0
 
     # 解析键盘映射
-    # 这里会自动识别你是否给了黑键。如果你给了，valid_pitch_classes 就会包含对应数字
     mapped_midi_to_key: dict[int, str] = {
         MIDI_NOTE_MAP.get_midi_by_note(k): v for k, v in note_to_key_mapping.items()
     }
@@ -104,7 +103,6 @@ def NoteFitting(
     # 如果不做八度平移，大部分音符其实也能放下，那就别平移了
     # 避免本来好好的 C3-C5 曲子被强行移到 C4-C6 (虽然也是对的，但没必要)
     # 我们可以计算一下 "Global Shift = 0" 时的落点率
-
     # 简单的判据：如果 global_octave_shift 不为0，我们检查一下如果不移八度，是否大部分音符会出界？
     if global_octave_shift != 0:
         notes_in_range_without_shift = 0
@@ -135,7 +133,7 @@ def NoteFitting(
 
         is_correct = True
 
-        # 2. 智能折叠 (Smart Folding)
+        # 2. 折叠
         while target_pitch > max_key_midi:
             target_pitch -= 12
             is_correct = False
@@ -143,7 +141,7 @@ def NoteFitting(
             target_pitch += 12
             is_correct = False
 
-        # 3. 就近吸附 (Snap)
+        # 3. 就近吸附
         if target_pitch not in mapped_midi_to_key:
             is_correct = False
             nearest_pitch = min(available_midis, key=lambda x: abs(x - target_pitch))

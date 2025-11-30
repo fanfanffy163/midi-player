@@ -3,13 +3,12 @@ import subprocess
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
-    IndeterminateProgressRing,
     MessageBox,
     PrimaryPushButton,
     ProgressBar,
@@ -70,7 +69,7 @@ class ConversionWorker(QThread):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # 将错误重定向到标准输出
                 text=True,
-                encoding="utf-8",  # 注意编码，Windows有时可能需要 'gbk'
+                encoding="utf-8",
                 errors="replace",
                 startupinfo=startupinfo,
             )
@@ -86,8 +85,7 @@ class ConversionWorker(QThread):
             return_code = process.poll()
 
             if return_code == 0:
-                # 假设 Audiveris 成功并在同目录下生成了 .mxl (需要额外转 midi) 或直接生成了 midi
-                # 这里模拟一个成功信息
+                # Audiveris 成功并在同目录下生成了 .mxl (需要额外转 midi)
                 self.log_signal.emit("✅ Audiveris 处理完成。")
                 self.finish_signal.emit(True, str(Path(self.output_dir)))
             else:
@@ -101,11 +99,11 @@ class ConversionWorker(QThread):
                 self.finish_signal.emit(False, "未找到生成的 .mxl 文件，识别可能失败。")
                 return
 
-            # 取第一个找到的 mxl 文件 (通常只有一个)
+            # 取第一个找到的 mxl 文件
             mxl_path = found_mxl[0]
             self.log_signal.emit(f"📄 找到乐谱文件: {mxl_path.name}")
 
-            # --- 步骤 3: 使用 music21 转 MIDI ---
+            # --- 使用 music21 转 MIDI ---
             self.log_signal.emit(f"🎹 正在利用 music21 生成 MIDI...")
 
             midi_filename = mxl_path.stem + ".mid"
@@ -144,7 +142,7 @@ class ConversionWorker(QThread):
 
 
 # ==========================================
-# 2. 自定义拖拽上传控件
+# 上传控件
 # ==========================================
 class DragDropWidget(CardWidget):
     file_dropped = Signal(str)
@@ -219,6 +217,7 @@ class DragDropWidget(CardWidget):
         else:
             event.ignore()
 
+    # --- 目前管理员模式启动的应用，无法接受非管理员启动应用的文件drop ---
     def dropEvent(self, event: QDropEvent):
         files = [u.toLocalFile() for u in event.mimeData().urls()]
         for f in files:
@@ -233,7 +232,7 @@ class DragDropWidget(CardWidget):
 
 
 # ==========================================
-# 3. 主界面 (SubInterface)
+# 主界面 (SubInterface)
 # ==========================================
 class OMRInterface(QLazyWidget):
 
@@ -254,7 +253,7 @@ class OMRInterface(QLazyWidget):
         self.main_layout.setSpacing(10)
 
         # ----------------------------------
-        # Part 1: 顶部基础信息栏 (CardWidget) - 仅保留环境检测
+        # Part 1: 顶部基础信息栏 (CardWidget)
         # ----------------------------------
         self.top_card = CardWidget(self)
         self.top_layout = QHBoxLayout(self.top_card)
@@ -303,9 +302,6 @@ class OMRInterface(QLazyWidget):
         self.top_layout.addSpacing(10)
         self.top_layout.addWidget(self.btn_select_path)
 
-        # 进度条放在顶部卡片下方或内部，这里为了布局简单，不单独占位，
-        # 真正忙碌时可以放在最底部或者作为一个 Modal 遮罩，这里暂时先不放在 TopLayout 里
-
         # ----------------------------------
         # Part 2: 中间区域 (左右分栏)
         # ----------------------------------
@@ -316,7 +312,6 @@ class OMRInterface(QLazyWidget):
         left_layout = QVBoxLayout()
         self.lbl_drop_title = SubtitleLabel("1. 上传乐谱")
         self.drop_area = DragDropWidget(self)
-        # 连接信号：文件选中后，不直接转换，而是保存路径
         self.drop_area.file_dropped.connect(self._on_file_selected)
 
         left_layout.addWidget(self.lbl_drop_title)
@@ -352,7 +347,7 @@ class OMRInterface(QLazyWidget):
         self.settings_layout.addWidget(settings_title)
         self.settings_layout.addWidget(setting_card)
 
-        # [新增] 右下：日志区
+        # 右下：日志区
         convert_layout = QHBoxLayout()
         self.lbl_log_title = SubtitleLabel("3. 转换日志")
 
@@ -420,7 +415,6 @@ class OMRInterface(QLazyWidget):
     def _on_refresh_clicked(self):
         """手动刷新环境检测"""
         self.lbl_status_title.setText("正在重新检测...")
-        # 为了视觉反馈，这里可以短暂 disable 按钮
         self.btn_refresh.setEnabled(False)
         self._check_environment()
         # 恢复按钮并提示

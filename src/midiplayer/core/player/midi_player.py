@@ -74,18 +74,17 @@ class QMidiPlayer(QtCore.QObject):
 
         # 引入混合调度阈值
 
-        # 自旋等待阈值（纳秒）：当距下个事件小于此值，线程自旋以保证最高精度
-        self.SPIN_WAIT_THRESHOLD_NS = 5000
+        # 自旋等待阈值（微秒）：当距下个事件小于此值，线程自旋以保证最高精度
+        self.SPIN_WAIT_THRESHOLD_US = 500
+        # 响应式轮询时间（微秒）：当距下个事件较远时，以此间隔苏醒以检查UI响应
+        self.RESPONSIVE_LOOP_TIME_US = 20000
 
-        # 响应式轮询时间（纳秒）：当距下个事件较远时，以此间隔苏醒以检查UI响应
-        self.RESPONSIVE_LOOP_TIME_NS = 5000
-
+        # 同步当前播放时间
         self.position_timer = QtCore.QTimer(self)
         self.position_timer.setInterval(1000)  # 1000ms = 1s
         self.position_timer.timeout.connect(self._on_position_update)
 
     def _on_position_update(self):
-        # 这里的锁粒度非常小，很安全
         with self.clock_lock:
             pos_ms = int(self.current_playback_time_us // 1000)
             logger.debug(
@@ -285,7 +284,7 @@ class QMidiPlayer(QtCore.QObject):
             key_to_release = KEY_MAP.get(key_str, key_str)
             pydirectinput.keyUp(key_to_release)
 
-    ### 核心优化：高精度混合调度器 ###
+    ### 高精度混合调度器 ###
     def _scheduler_thread(self):
         """调度线程：基于状态机的混合精度时钟"""
 
@@ -293,6 +292,7 @@ class QMidiPlayer(QtCore.QObject):
             # 清除唤醒标志
             self.wake_up_event.clear()
 
+            # 播放延时控制（这块可以优化）
             tmp_start_flag = False
             with self.clock_lock:
                 tmp_start_flag = self.start_flag
@@ -366,15 +366,15 @@ class QMidiPlayer(QtCore.QObject):
                         else:
                             # 此时在静默播放，已经没有任务了. 让他不要自旋就行
                             wait_micros = max(
-                                self.RESPONSIVE_LOOP_TIME_NS,
-                                self.SPIN_WAIT_THRESHOLD_NS + 1,
+                                self.RESPONSIVE_LOOP_TIME_US,
+                                self.SPIN_WAIT_THRESHOLD_US + 1,
                             )
 
                         if wait_micros <= 1:  # (<= 1us 视为立即执行)
                             # 已经迟了或即将到时，不睡眠，立即循环
                             wait_timeout_sec = 0
 
-                        elif wait_micros <= self.SPIN_WAIT_THRESHOLD_NS:
+                        elif wait_micros <= self.SPIN_WAIT_THRESHOLD_US:
                             # 【精度模式】
                             # 时间极短，准备自旋
                             spin_wait = True
@@ -386,10 +386,10 @@ class QMidiPlayer(QtCore.QObject):
                         else:
                             # 【响应模式】
                             # 时间较长，计算一个安全的、可响应的睡眠时间
-                            responsive_wait_us = self.RESPONSIVE_LOOP_TIME_NS
-
-                            # 睡眠时间 = min(到下个音符的时间, 5ms的响应时间)
-                            sleep_micros = min(wait_micros, responsive_wait_us)
+                            # 睡眠时间 = min(到下个音符的时间 * 0.75, 响应时间)
+                            sleep_micros = min(
+                                wait_micros * 0.75, self.RESPONSIVE_LOOP_TIME_US
+                            )
                             wait_timeout_sec = sleep_micros / 1_000_000
 
                 elif (
@@ -405,12 +405,9 @@ class QMidiPlayer(QtCore.QObject):
             # --- 执行等待策略 ---
             if spin_wait:
                 # 【精度模式】
-                # 忙碌-等待（自旋），不响应UI
-                # 这是你要求的 "忽略响应ui"
+                # 忙碌-等待（自旋）
                 while time.time_ns() < target_real_time_ns:
                     pass
-                # 自旋结束后，将立即进入下一轮循环，获取锁并派发事件
-
             else:
                 # 【响应模式】
                 # 带超时的等待
