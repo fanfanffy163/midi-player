@@ -9,6 +9,12 @@
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/dark.css">
 </head>
 <body>
+  <script>
+    var hash = window.location.hash;
+    if (!hash || hash === '#/') {
+      window.location.hash = '#/zh-cn/';
+    }
+  </script>
   <div id="app"></div>
   <script>
     window.$docsify = {
