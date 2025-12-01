@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Description">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/dark.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: 'midi-player',
+      repo: 'https://github.com/fanfanffy163/midi-player', // 如果有 github 地址填在这里
+      
+      loadNavbar: true,
+      loadSidebar: true,
+      auto2top: true,
+      subMaxLevel: 2,
+      nameLink: {
+        '/en/': '#/en/',
+        '/zh-cn/': '#/zh-cn/',
+        '/': '#/zh-cn/' // 默认回中文
+      },
+      alias: {
+        '/.*/_navbar.md': '/_navbar.md', // 所有页面都共享根目录的 navbar
+      },
+
+      search: {
+        paths: 'auto',
+        placeholder: {
+          '/en/': 'Type to search',
+          '/zh-cn/': '搜索',
+          '/': '搜索'
+        },
+        noData: {
+          '/en/': 'No Results',
+          '/zh-cn/': '找不到结果',
+          '/': '找不到结果'
+        }
+      }
+    }
+  </script>
+  <!-- Docsify v4 -->
+  <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="//cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="//unpkg.com/docsify-mermaid@2.0.1/dist/docsify-mermaid.js"></script>
+  <script>
+    // 初始化 Mermaid，设置主题为暗色
+    mermaid.initialize({ 
+      startOnLoad: true, 
+      theme: 'dark' 
+    });
+  </script>
+</body>
+</html>
