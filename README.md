@@ -22,7 +22,7 @@ python -m midiplayer
 直接使用VS Code的Run and Debug进行，注意更改虚拟环境配置
 
 ## 在线文档📕
-想知道如何使用？请仔细阅读 [帮助文档]() 👈
+想知道如何使用？请仔细阅读 [帮助文档](https://fanfanffy163.github.io/midi-player/#/zh-cn/) 👈
 
 ## 特性🚀
 * 支持 **多种按键预设** 以支持不同场景
