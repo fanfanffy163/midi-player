@@ -1,5 +1,6 @@
 import json
 import os
+from collections import OrderedDict
 from pathlib import Path
 
 import mido
@@ -37,6 +38,9 @@ from whoosh.qparser import MultifieldParser, OrGroup
 from midiplayer.core.player.type import SONG_CHANGE_ACTIONS
 from midiplayer.core.utils.config import cfg
 from midiplayer.core.utils.utils import Utils
+
+MAX_INDEX_FILES = 200_000  # 最大索引文件数
+MAX_CACHE_SIZE = 1000  # 最大缓存数量，LRU淘汰策略
 
 
 class MidiCard(CardWidget):
@@ -114,12 +118,14 @@ class WorkerSignals(QObject):
 
     # 信号: (索引是否成功)
     index_ready = Signal(bool)
-    # 信号: (过滤后的路径列表)
-    search_complete = Signal(list)
+    # 信号: (过滤后的路径列表, 总数, 透传的pending_index)
+    search_complete = Signal(list, int, object)
 
     # --- 修改：单个加载 ---
     # 信号: (路径str, 状态'ok'|'error', 数据 float|str)
     single_load_complete = Signal(str, str, object)
+
+    warning_message = Signal(str)
 
 
 # --- Whoosh FTS (全文搜索) 任务 ---
@@ -157,7 +163,11 @@ class IndexBuilderTask(QRunnable):
             paths.extend(list(self.dir_path.rglob("*.midi")))
 
             total_count = 0
+            is_limit_reached = False  # 标记是否触发限制
             for path in paths:
+                if total_count >= MAX_INDEX_FILES:
+                    is_limit_reached = True
+                    break
                 # 去除文件后缀名的影响
                 pure_name = path.stem
                 try:
@@ -173,6 +183,11 @@ class IndexBuilderTask(QRunnable):
                     pinyin_tokens=pinyin_tokens,  # 存入空格分隔的拼音
                 )
                 total_count += 1
+
+            if is_limit_reached:
+                msg = f"检测到文件数量超过 {MAX_INDEX_FILES} 个，仅索引前 {MAX_INDEX_FILES} 个文件。"
+                logger.warning(msg)
+                self.signals.warning_message.emit(msg)
 
             logger.debug(f"Whoosh: 正在提交 {total_count} 个文件...")
             writer.commit()
@@ -207,10 +222,20 @@ class SearchTask(QRunnable):
     后台任务：使用 Whoosh 索引和查询词进行毫秒级过滤。
     """
 
-    def __init__(self, index_dir: Path, search_text: str):
+    def __init__(
+        self,
+        index_dir: Path,
+        search_text: str,
+        page: int = 1,
+        page_size: int = 50,
+        pending_index: int | None = None,
+    ):
         super().__init__()
         self.index_dir = index_dir
         self.search_text = search_text
+        self.page = page
+        self.page_size = page_size
+        self.pending_index = pending_index
         self.signals = WorkerSignals()
 
     @Slot()
@@ -231,15 +256,17 @@ class SearchTask(QRunnable):
 
             filtered_paths = []
             with ix.searcher() as searcher:
-                results = searcher.search(q, limit=None)
+                results = searcher.search_page(q, self.page, pagelen=self.page_size)
+                total_count = results.total  # 获取总匹配数（这是计算总页数必须的）
                 for r in results:
                     filtered_paths.append(Path(r["path"]))
-            filtered_paths = Utils.sort_path_list_by_name(filtered_paths)
 
-            self.signals.search_complete.emit(filtered_paths)
+            self.signals.search_complete.emit(
+                filtered_paths, total_count, self.pending_index
+            )
         except Exception as e:
             logger.debug(f"Whoosh 搜索出错: {e}")
-            self.signals.search_complete.emit([])
+            self.signals.search_complete.emit([], 0, None)
 
 
 # --- MIDI单个加载器 ---
@@ -277,8 +304,8 @@ class MidiCards(QWidget):
     def __init__(self, parent):
         super().__init__(parent=parent)
         # 1. 数据模型
-        self.all_midi_paths = []
-        self.midi_data_cache = {}
+        self.total_len = 0
+        self.midi_data_cache = OrderedDict()
         self.selected_path_str: str | None = None
 
         # 2. 状态
@@ -438,16 +465,26 @@ class MidiCards(QWidget):
             logger.debug(f"需要重建索引。原因: {rebuild_reason}")
             self.is_index_ready = False
             self._update_searchbox(True)
-            self.all_midi_paths.clear()
+            self.total_len = 0
             self.current_filtered_paths.clear()
 
             self.clear_layout(self.card_layout)
             task = IndexBuilderTask(dir_path, self.INDEX_DIR)
             task.signals.index_ready.connect(self.on_index_ready)
+            task.signals.warning_message.connect(self.on_index_warning)
             self.threadpool.start(task)
         else:
             logger.debug("Whoosh 索引已是最新，直接使用。")
             self.on_index_ready(True)
+
+    @Slot(str)
+    def on_index_warning(self, msg: str):
+        Utils.show_warning_infobar(
+            self=self,
+            title="文件过多",
+            content=msg,
+            duration=5000,
+        )
 
     @Slot(bool)
     def on_index_ready(self, success: bool):
@@ -486,69 +523,64 @@ class MidiCards(QWidget):
         self.current_filter_text = text.lower()
 
         # 如果文本为空，获取所有；否则执行搜索
+        self.current_page = 0
         self._trigger_search(get_all_paths=(not text))
 
     @Slot()
-    def _trigger_search(self, get_all_paths: bool = False):
+    def _trigger_search(
+        self, get_all_paths: bool = False, pending_index: int | None = None
+    ):
         if not self.is_index_ready:
             return
 
         search_text = "" if get_all_paths else self.current_filter_text
         logger.debug(f"Whoosh 搜索: '{search_text}'")
 
-        task = SearchTask(self.INDEX_DIR, search_text)
-
-        if get_all_paths:
-            task.signals.search_complete.connect(self._on_all_paths_loaded)
-        else:
-            task.signals.search_complete.connect(self.on_search_results)
-
-        self.current_page = 0
+        task = SearchTask(
+            self.INDEX_DIR,
+            search_text,
+            self.current_page + 1,
+            self.ITEMS_PER_PAGE,
+            pending_index,
+        )
+        task.signals.search_complete.connect(self.on_search_results)
         self.threadpool.start(task)
 
-    @Slot(list)
-    def _on_all_paths_loaded(self, all_paths: list):
-        logger.debug(f"已加载所有路径: {len(all_paths)}")
-        all_paths = Utils.sort_path_list_by_name(all_paths)
-        self.all_midi_paths = all_paths
-        self.on_search_results(all_paths)
-
     # --- 层级 1：渲染与分发 ---
-    @Slot(list)
-    def on_search_results(self, filtered_paths: list):
+    @Slot(list, int, object)
+    def on_search_results(
+        self, filtered_paths: list, total_len: int, pending_index: int | None = None
+    ):
         """
         (重构：渲染-然后-更新)
         当 SearchTask 完成时调用 (主线程)
         """
+        self.total_len = total_len
         self.current_filtered_paths = filtered_paths
-
-        total_items = len(self.current_filtered_paths)
         self.total_pages = max(
-            1, (total_items + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE
+            1, (total_len + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE
         )
         self.current_page = max(0, min(self.current_page, self.total_pages - 1))
 
         self.page_label.setText(
-            f"第 {self.current_page + 1} / {self.total_pages} 页 (共 {total_items} 项)"
+            f"第 {self.current_page + 1} / {self.total_pages} 页 (共 {total_len} 项)"
         )
         self.prev_button.setEnabled(self.current_page > 0)
         self.next_button.setEnabled(self.current_page < self.total_pages - 1)
-
-        start_index = self.current_page * self.ITEMS_PER_PAGE
-        end_index = start_index + self.ITEMS_PER_PAGE
-        paths_to_display = self.current_filtered_paths[start_index:end_index]
 
         self.clear_layout(self.card_layout)
 
         # --- 立即渲染，异步加载 ---
 
-        if not paths_to_display:
+        if not self.current_filtered_paths:
             # (如果列表为空，在此处返回)
             return
 
-        logger.debug(f"正在渲染 {len(paths_to_display)} 个卡片，并异步派发加载任务...")
+        logger.debug(
+            f"正在渲染 {len(self.current_filtered_paths)} 个卡片，并异步派发加载任务..."
+        )
 
-        for path in paths_to_display:
+        for path in self.current_filtered_paths:
             path_str = str(path)
 
             # 1. 立即创建并添加 Card
@@ -560,7 +592,7 @@ class MidiCards(QWidget):
                 card.set_selected(True)
 
             # 2. 检查缓存
-            cached_data = self.midi_data_cache.get(path_str)
+            cached_data = self._get_from_cache(path_str)
 
             if cached_data is not None:
                 # 缓存命中，立即更新UI
@@ -575,6 +607,16 @@ class MidiCards(QWidget):
                 task.signals.single_load_complete.connect(self._on_single_load_complete)
                 self.threadpool.start(task)
 
+        if pending_index is not None and isinstance(pending_index, int):
+            count = self.card_layout.count()
+            target_index = (pending_index + count) % count
+
+            if 0 <= target_index < count:
+                target_card = self.card_layout.itemAt(target_index).widget()
+                if isinstance(target_card, MidiCard):
+                    self.on_card_clicked(target_card)
+                    self.scroll_area.ensureWidgetVisible(target_card)
+
     # --- 异步更新槽 ---
     @Slot(str, str, object)
     def _on_single_load_complete(self, path_str: str, status: str, data: object):
@@ -583,7 +625,7 @@ class MidiCards(QWidget):
         """
         # 1. 无论如何，先缓存结果
         # (注意：缓存成功(float)和失败(str))
-        self.midi_data_cache[path_str] = data
+        self._add_to_cache(path_str, data)
 
         # 2. 查找对应的卡片
         card = self.find_visible_card(path_str)
@@ -604,13 +646,13 @@ class MidiCards(QWidget):
         """切换到上一页"""
         if self.current_page > 0:
             self.current_page -= 1
-            self.on_search_results(self.current_filtered_paths)
+            self._trigger_search()
 
     def next_page(self):
         """切换到下一页"""
         if self.current_page < self.total_pages - 1:
             self.current_page += 1
-            self.on_search_results(self.current_filtered_paths)
+            self._trigger_search()
 
     def clear_layout(self, layout):
         """清空布局中的所有小部件"""
@@ -648,58 +690,70 @@ class MidiCards(QWidget):
                 return widget
         return None
 
-    def get_card_and_select(self, action: SONG_CHANGE_ACTIONS) -> Path | None:
-        all_paths = self.all_midi_paths
-        if not all_paths:
-            return None
+    def on_user_action_change(self, action: SONG_CHANGE_ACTIONS):
+        # 如果是循环，则不变
+        if (
+            action == SONG_CHANGE_ACTIONS.LOOP_THIS
+            or action == SONG_CHANGE_ACTIONS.STOP
+        ):
+            return
 
-        [current_idx] = [
-            i for i, p in enumerate(all_paths) if str(p) == self.selected_path_str
-        ] or [-1]
+        if not self.total_len:
+            return
 
-        if current_idx == -1 and all_paths:
-            current_idx = 0
-        elif current_idx == -1:
-            return None
+        current_card = self.find_visible_card(self.selected_path_str)
+        if not current_card:
+            if self.card_layout.count() > 0:
+                self.on_card_clicked(self.card_layout.itemAt(0).widget())
+            return
+        page_idx = self.card_layout.indexOf(current_card)
+        current_page_len = len(self.current_filtered_paths)
 
-        total_len = len(all_paths)
-        max_times = total_len
-        current_times = 0
-        next_path = None
-
-        while max_times > current_times:
-            if action == SONG_CHANGE_ACTIONS.NEXT_SONG:
-                next_idx = (current_idx + 1) % total_len
-            elif action == SONG_CHANGE_ACTIONS.PREVIOUS_SONG:
-                next_idx = (current_idx - 1 + total_len) % total_len
+        next_page_idx = page_idx
+        if action == SONG_CHANGE_ACTIONS.NEXT_SONG:
+            next_page_idx = next_page_idx + 1
+            if next_page_idx >= current_page_len:
+                next_page_idx = 0
+                self.current_page = (self.current_page + 1) % self.total_pages
+                self._trigger_search(pending_index=0)
             else:
-                return None
+                target_card = self.card_layout.itemAt(next_page_idx).widget()
+                if isinstance(target_card, MidiCard):
+                    self.on_card_clicked(target_card)
 
-            next_path = all_paths[next_idx]
-            this_midi = self.midi_data_cache.get(str(next_path), None)
-            # (此检查确保我们只切换到已成功加载的MIDI)
-            if this_midi and isinstance(this_midi, float):
-                break
+        elif action == SONG_CHANGE_ACTIONS.PREVIOUS_SONG:
+            next_page_idx = next_page_idx - 1
+            if next_page_idx < 0:
+                next_page_idx = self.ITEMS_PER_PAGE - 1
+                self.current_page = (
+                    self.current_page - 1 + self.total_pages
+                ) % self.total_pages
+                self._trigger_search(pending_index=-1)
+            else:
+                target_card = self.card_layout.itemAt(next_page_idx).widget()
+                if isinstance(target_card, MidiCard):
+                    self.on_card_clicked(target_card)
+        else:
+            return
 
-            current_idx = next_idx
-            current_times += 1
+    def _add_to_cache(self, path: str, data: object):
+        """写入缓存 (LRU策略)"""
+        if path in self.midi_data_cache:
+            # 如果已存在，更新数据并将其移动到末尾（标记为最近使用）
+            self.midi_data_cache.move_to_end(path)
+            self.midi_data_cache[path] = data
+        else:
+            # 写入新数据
+            self.midi_data_cache[path] = data
+            # 如果超出限制，弹出第一个元素（最早未被使用的）
+            # last=False 表示弹出头部（最旧的），last=True 表示弹出尾部（最新的）
+            if len(self.midi_data_cache) > MAX_CACHE_SIZE:
+                self.midi_data_cache.popitem(last=False)
 
-        if next_path:
-            self.on_card_clicked(None, str(next_path))
-
-            card = self.find_visible_card(str(next_path))
-            if not card:
-                try:
-                    full_idx = self.current_filtered_paths.index(next_path)
-                    target_page = full_idx // self.ITEMS_PER_PAGE
-                    if target_page != self.current_page:
-                        self.current_page = target_page
-                        # 触发重新渲染
-                        self.on_search_results(self.current_filtered_paths)
-                        QTimer.singleShot(
-                            50, lambda: self.on_card_clicked(None, str(next_path))
-                        )
-                except ValueError:
-                    pass
-
-        return next_path
+    def _get_from_cache(self, path: str):
+        """读取缓存并更新活跃度"""
+        data = self.midi_data_cache.get(path)
+        if data is not None:
+            # 读取命中，将其移动到末尾（标记为最近使用）
+            self.midi_data_cache.move_to_end(path)
+        return data

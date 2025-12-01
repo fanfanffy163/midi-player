@@ -118,4 +118,4 @@ class MusicPlayPage(QLazyWidget):
 
     def on_change_song_action(self, action):
         """处理歌曲切换操作"""
-        self.midi_tree.get_card_and_select(action)
+        self.midi_tree.on_user_action_change(action)
